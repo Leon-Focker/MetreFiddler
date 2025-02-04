@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "bitfiddler"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "atomic_float",
  "nih_plug",
