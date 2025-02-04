@@ -5,6 +5,8 @@ This Plugin was built using the [nih_plug framework](https://github.com/robbert-
 
 ## Building
 
+Precompiled binaries can be found in the [Releases tab](https://github.com/Leon-Focker/BitFiddler/releases/)
+
 After installing [Rust](https://rustup.rs/), you can compile BitFiddler yourself as follows:
 
 ```shell
