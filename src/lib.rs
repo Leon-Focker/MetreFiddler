@@ -1,5 +1,5 @@
 use nih_plug::prelude::*;
-use nih_plug_iced::IcedState;
+use nih_plug_vizia::ViziaState;
 use std::sync::Arc;
 
 mod editor;
@@ -14,7 +14,7 @@ struct BitFiddlerParams {
     /// The editor state, saved together with the parameter state so the custom scaling can be
     /// restored.
     #[persist = "editor-state"]
-    editor_state: Arc<IcedState>,
+    editor_state: Arc<ViziaState>,
 
     #[id = "bit_selector"]
     pub bit_selector: IntParam,
