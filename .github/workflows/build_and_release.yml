@@ -13,7 +13,15 @@ jobs:
   
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+          - os: windows-latest
+            arch: x86_64
+          - os: macos-latest
+            arch: x86_64
+          - os: macos-latest
+            arch: aarch64
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -23,20 +31,31 @@ jobs:
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
-         sudo apt-get update
-         sudo apt-get install -y libgl1-mesa-dev libxcursor-dev pkg-config
-         sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
-         sudo apt-get install -y libxcb-icccm4-dev libx11-xcb-dev libxcb-dri2-0-dev
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev libxcursor-dev pkg-config
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+          sudo apt-get install -y libxcb-icccm4-dev libx11-xcb-dev libxcb-dri2-0-dev
+
+      - name: Install Rust targets (macOS)
+        if: runner.os == 'macOS'
+        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
 
       - name: Build release binary
-        run: cargo xtask bundle bitfiddler --release
+        run: |
+          if [ "${{ matrix.os }}" == "macOS" ]; then
+            cargo build --release --target ${{ matrix.arch }}-apple-darwin
+          else
+            cargo xtask bundle bitfiddler --release
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ runner.os }}
-          path: target/bundled/*
-
+          name: binary-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            target/${{ matrix.arch }}-apple-darwin/release/*
+            target/bundled/*
+          
   release:
     needs: build  # Ensure all builds finish first
     runs-on: ubuntu-latest
