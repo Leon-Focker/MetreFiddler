@@ -1,5 +1,8 @@
 # BitFiddler
+
 This is a very simple audio effect plugin, flipping one bit of each incoming sample. This results in a very harsh, digital distortion. Strictly speaking this is just a limited waveshaper.
+
+![Plugin Gui](./gui.jpg)
 
 This Plugin was built using the [nih_plug framework](https://github.com/robbert-vdh/nih-plug).
 
