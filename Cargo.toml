@@ -1,15 +1,14 @@
 [package]
-name = "bitfiddler"
+name = "metrefiddler"
 version = "1.0.0"
 edition = "2021"
 authors = ["Leon Focker <contact@leonfocker.de>"]
 license = "GPL-3.0-or-later"
 homepage = "https://youtu.be/dQw4w9WgXcQ"
-description = "a weird audio filter"
+description = "a rhythmic midi generator"
 
 [workspace]
 members = ["xtask", "."]
-
 
 [lib]
 crate-type = ["cdylib"]
@@ -17,11 +16,11 @@ crate-type = ["cdylib"]
 [dependencies]
 # Remove the `assert_process_allocs` feature to allow allocations on the audio
 # thread in debug builds.
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "16c6c58f4d9f08c9c515c991c218bff235cff6e2", features = ["assert_process_allocs"] }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "d64b2ab9cfb94773c5ee4d0e72aef5921ee95d2d", features = ["assert_process_allocs"] }
 # Uncomment the below line to disable the on-by-default VST3 feature to remove
 # the GPL compatibility requirement
 # nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false, features = ["assert_process_allocs"] }
-nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "16c6c58f4d9f08c9c515c991c218bff235cff6e2", package = "nih_plug_vizia" }
+nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "d64b2ab9cfb94773c5ee4d0e72aef5921ee95d2d", package = "nih_plug_vizia" }
 atomic_float = "0.1"
 
 [profile.release]

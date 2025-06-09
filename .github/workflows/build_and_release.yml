@@ -45,7 +45,7 @@ jobs:
           if [ "${{ matrix.os }}" == "macOS" ]; then
             cargo build --release --target ${{ matrix.arch }}-apple-darwin
           else
-            cargo xtask bundle bitfiddler --release
+            cargo xtask bundle metrefiddler --release
           fi
 
       - name: Upload artifact
