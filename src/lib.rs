@@ -1,8 +1,11 @@
 use nih_plug::prelude::*;
 use nih_plug_vizia::ViziaState;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use crate::metre_data::{MetreData};
 
 mod editor;
+mod metre_data;
+mod metre;
 
 struct MetreFiddler {
     params: Arc<MetreFiddlerParams>,
@@ -20,8 +23,18 @@ struct MetreFiddlerParams {
     #[id = "bpm_toggle"]
     pub bpm_toggle: BoolParam,
     
-    #[id = "outer_dur_selector"]
-    pub outer_dur_selector: FloatParam,
+    #[id = "metric_dur_selector"]
+    pub  metric_dur_selector: FloatParam,
+    
+    // custom data struct, marked with `#[persist]`
+    // The `Arc<Mutex<CustomData>>` allows to share and modify it
+    // between the GUI thread and the audio thread safely.
+    #[persist = "metre_data"] // Unique ID for this persistent field
+    pub metre_data: Arc<Mutex<MetreData>>,
+    
+    // TODO min and max velocity for midi output
+    // TODO lower and upper indisp threshold for midi output
+    // TODO A reset phase button
 }
 
 impl Default for MetreFiddler {
@@ -40,18 +53,20 @@ impl Default for MetreFiddlerParams {
         Self {
             editor_state: editor::default_state(),
 
-            // Select wheter to match speed to the DAW's BPM
+            // Select whether to match speed to the DAW's BPM
             bpm_toggle: BoolParam::new(
                 "BPM Toggle",
                 false
             ),
             
-            // Select the duration for the outer metric length
-            outer_dur_selector: FloatParam::new(
+            // Select the duration for the metric duration
+             metric_dur_selector: FloatParam::new(
                 "Duration Selection",
                 1.0,
                 FloatRange::Linear { min: 0.0, max: 10.0},
-            )
+            ),
+
+            metre_data: Arc::new(Mutex::new(MetreData::default())),
         }
     }
 }
@@ -60,7 +75,7 @@ impl MetreFiddler {
     fn trigger_event(&mut self) -> bool {
         let passed_time = self.time_since_trigger as f32 / self.sample_rate;
         
-        if passed_time >= self.params.outer_dur_selector.value() {
+        if passed_time >= self.params. metric_dur_selector.value() {
             self.time_since_trigger = 0;
             true
         } else {
@@ -115,23 +130,33 @@ impl Plugin for MetreFiddler {
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         
+        // TODO change self.params. metric_dur_selector according to bpm_toggle...
+        // so that 1 = a quarter note.
+        if self.params.bpm_toggle.value() {
+            let _bpm = context.transport().tempo;    
+        }
+        
+        //nih_log!("hihi I'm doing what i should: {:?}", self.params.metre_data.lock().unwrap().value);
+                
         for (sample_id, _channel_samples) in buffer.iter_samples().enumerate() {
-            if self.trigger_event() {
-                context.send_event(NoteEvent::NoteOn {
-                    timing: sample_id as u32,
-                    voice_id: Some(0),
-                    channel: 0,
-                    note: 60,
-                    velocity: 1.0,
-                });
-                context.send_event(NoteEvent::NoteOn {
-                    timing: sample_id as u32,
-                    voice_id: Some(0),
-                    channel: 0,
-                    note: 60,
-                    velocity: 1.0,
-                });
-            }   
+            if context.transport().playing {
+                if self.trigger_event() {
+                    context.send_event(NoteEvent::NoteOn {
+                        timing: sample_id as u32,
+                        voice_id: Some(0),
+                        channel: 0,
+                        note: 60,
+                        velocity: 1.0,
+                    });
+                    context.send_event(NoteEvent::NoteOn {
+                        timing: sample_id as u32,
+                        voice_id: Some(0),
+                        channel: 0,
+                        note: 60,
+                        velocity: 1.0,
+                    });
+                }
+            }
         }
 
         ProcessStatus::Normal

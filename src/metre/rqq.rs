@@ -1,0 +1,149 @@
+use crate::metre::rqq::RQQ::{Elem, List};
+
+#[derive(Debug, Clone)]
+pub enum RQQ {
+    Elem(f32),
+    List(Vec<RQQ>),
+}
+
+impl RQQ {
+    fn push(&mut self, item: RQQ) {
+        match self {
+            List(vec) => vec.push(item),
+            Elem(num) => *self = List(vec![Elem(*num), item]),
+        }
+    }
+
+    fn push_recur(&mut self, item: RQQ, lvl: isize) {
+        match self {
+            List(vec) => match vec.last_mut() {
+                Some(elem) => if lvl <= 0 {
+                    elem.push(item)
+                } else {
+                    elem.push_recur(item, lvl - 1)
+                },
+                None => *self = List(vec![item]),
+            }
+            Elem(num) => *self = List(vec![Elem(*num), item]),
+        }
+    }
+
+    fn print(&self) {
+        match self {
+            Elem(num) => print!("{}", num),
+            List(vec) => {
+                print!("(");
+                for (x, item) in vec.iter().enumerate() {
+                    if x > 0 { print!(" ") }
+                    item.print();
+                }
+                print!(")");
+            }
+        }
+    }
+
+    pub fn to_gnsm(self) -> Result<Vec<usize>, String>{
+        match self {
+            Elem(_) => Err(format!("rqq.to_gnsm got malformed rqq list")),
+            List(vec) => {
+                if vec.len() == 2 {
+                    let mut result = vec[1].clone().to_gnsm_aux(1)?;
+                    let max = *result.iter().max().unwrap_or(&0);
+
+                    for i in result.iter_mut() {
+                        *i = max - *i
+                    }
+
+                    Ok(result)
+                } else {
+                    Err(format!("rqq.to_gnsm got malformed rqq list"))
+                }
+            }
+        }
+    }
+
+    fn to_gnsm_aux(self, lvl: usize) -> Result<Vec<usize>, String> {
+        let mut ls: Vec<usize> = Vec::new();
+        
+        if let List(vec) = self {
+            for item in vec {
+                match item {
+                    Elem(_) => ls.push(lvl),
+                    List(vec) => {
+                        ls.append(&mut vec[1].clone().to_gnsm_aux(lvl + 1)?)
+                    },
+                }
+            }
+        } else { 
+            return Err("rqq.to_gnsm: second Element is not a list".to_string())    
+        }
+        
+        ls[0] -= 1;
+        Ok(ls)
+    }
+    
+    fn no_empty_lists(&self) -> bool {
+        match self {  
+            Elem(_) => true,
+            List(vec) => {
+                if vec.is_empty() { false } else {
+                    vec.iter().all(|item| item.no_empty_lists())
+                }
+            },
+        }
+    }
+}
+
+pub fn parse_rqq(input: &str) ->  Result<RQQ, String> {
+    if input.len() < 1 { return Err("rqq must have at least one element".to_string()); }
+    let mut result: RQQ = List(vec![]);
+    let mut lvl = -1;
+    let mut elements = Vec::new();
+    let mut last = 0;
+    
+    // separate alphanumeric characters from others
+    for (index, matched) in input.match_indices(|c: char| !(c.is_alphanumeric() || c == '\'')) {
+        if last != index {
+            elements.push(&input[last..index]);
+        }
+        elements.push(matched);
+        last = index + matched.len();
+    }
+
+    if last < input.len() {
+        elements.push(&input[last..]);
+    }
+
+    // match elements
+    for element in elements {
+        match element {
+            "(" => {result.push_recur(List(vec![]), lvl); lvl += 1 },
+            ")" => lvl -= 1,
+            " " => (),
+            _ => {
+                // keep numbers only
+                match element.parse::<f32>() {
+                    Ok(num) => result.push_recur(Elem(num), lvl),
+                    Err(_) => (),
+                };
+            }
+        }
+    }
+    
+    result = match result {
+        List(vec) => {
+            if vec.len() < 1 { return Err("rqq contains no numbers!".to_string()); }
+            vec[0].clone()
+        },
+        Elem(_) => result,
+    };
+
+    // result.print();
+    // println!();
+    
+    if result.no_empty_lists() {
+        Ok(result)
+    } else {
+        Err(format!("rqq contains malformed rqq list"))
+    }
+}
