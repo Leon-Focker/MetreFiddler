@@ -6,11 +6,13 @@ use crate::metre_data::{MetreData};
 mod editor;
 mod metre_data;
 mod metre;
+mod gui;
 
 struct MetreFiddler {
     params: Arc<MetreFiddlerParams>,
     sample_rate: f32,
-    time_since_trigger: usize,
+    samples_since_trigger: usize,
+    last_reset_phase_value: bool,
 }
 
 #[derive(Params)]
@@ -24,17 +26,26 @@ struct MetreFiddlerParams {
     pub bpm_toggle: BoolParam,
     
     #[id = "metric_dur_selector"]
-    pub  metric_dur_selector: FloatParam,
-    
+    pub metric_dur_selector: FloatParam,
+
+    #[id = "velocity_min"]
+    pub velocity_min: FloatParam,
+    #[id = "velocity_max"]
+    pub velocity_max: FloatParam,
+
+    #[id = "lower_threshold"]
+    pub lower_threshold: FloatParam,
+    #[id = "upper_threshold"]
+    pub upper_threshold: FloatParam,
+
+    #[id = "reset_phase"]
+    pub reset_phase: BoolParam,
+
     // custom data struct, marked with `#[persist]`
     // The `Arc<Mutex<CustomData>>` allows to share and modify it
     // between the GUI thread and the audio thread safely.
-    #[persist = "metre_data"] // Unique ID for this persistent field
+    #[persist = "metre_data"]
     pub metre_data: Arc<Mutex<MetreData>>,
-    
-    // TODO min and max velocity for midi output
-    // TODO lower and upper indisp threshold for midi output
-    // TODO A reset phase button
 }
 
 impl Default for MetreFiddler {
@@ -43,7 +54,8 @@ impl Default for MetreFiddler {
         Self {
             params: default_params.clone(),
             sample_rate: 1.0,
-            time_since_trigger: 0,
+            samples_since_trigger: 0,
+            last_reset_phase_value: false,
         }
     }
 }
@@ -67,19 +79,48 @@ impl Default for MetreFiddlerParams {
             ),
 
             metre_data: Arc::new(Mutex::new(MetreData::default())),
+
+            velocity_min: FloatParam::new(
+                "Minimum for the velocity output",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0},
+            ),
+
+            velocity_max: FloatParam::new(
+                "Maximum for the velocity output",
+                1.0,
+                FloatRange::Linear { min: 0.0, max: 1.0},
+            ),
+
+            lower_threshold: FloatParam::new(
+                "Lower Threshold for the Midi output",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0},
+            ),
+
+            upper_threshold: FloatParam::new(
+                "Upper Threshold for the Midi output",
+                1.0,
+                FloatRange::Linear { min: 0.0, max: 1.0},
+            ),
+
+            reset_phase: BoolParam::new(
+                "Reset metric phasse",
+                false
+            ),
         }
     }
 }
 
 impl MetreFiddler {
     fn trigger_event(&mut self) -> bool {
-        let passed_time = self.time_since_trigger as f32 / self.sample_rate;
+        let passed_time = self.samples_since_trigger as f32 / self.sample_rate;
         
         if passed_time >= self.params. metric_dur_selector.value() {
-            self.time_since_trigger = 0;
+            self.samples_since_trigger = 0;
             true
         } else {
-            self.time_since_trigger += 1;
+            self.samples_since_trigger += 1;
             false }
     }
 }
@@ -135,8 +176,9 @@ impl Plugin for MetreFiddler {
         if self.params.bpm_toggle.value() {
             let _bpm = context.transport().tempo;    
         }
-        
+
         //nih_log!("hihi I'm doing what i should: {:?}", self.params.metre_data.lock().unwrap().value);
+
                 
         for (sample_id, _channel_samples) in buffer.iter_samples().enumerate() {
             if context.transport().playing {
@@ -157,6 +199,14 @@ impl Plugin for MetreFiddler {
                     });
                 }
             }
+
+            // Reset Phase
+            if !self.last_reset_phase_value && self.params.reset_phase.value() {
+                // TODO reset phase
+                nih_log!("hihi I'm doing what i should: {:?}", self.params.reset_phase.value());
+            };
+            self.last_reset_phase_value = self.params.reset_phase.value();
+
         }
 
         ProcessStatus::Normal

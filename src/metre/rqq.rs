@@ -28,19 +28,19 @@ impl RQQ {
         }
     }
 
-    fn print(&self) {
-        match self {
-            Elem(num) => print!("{}", num),
-            List(vec) => {
-                print!("(");
-                for (x, item) in vec.iter().enumerate() {
-                    if x > 0 { print!(" ") }
-                    item.print();
-                }
-                print!(")");
-            }
-        }
-    }
+    // fn print(&self) {
+    //     match self {
+    //         Elem(num) => print!("{}", num),
+    //         List(vec) => {
+    //             print!("(");
+    //             for (x, item) in vec.iter().enumerate() {
+    //                 if x > 0 { print!(" ") }
+    //                 item.print();
+    //             }
+    //             print!(")");
+    //         }
+    //     }
+    // }
 
     pub fn to_gnsm(self) -> Result<Vec<usize>, String>{
         match self {

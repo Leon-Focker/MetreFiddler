@@ -1,10 +1,10 @@
 # MetreFiddler
 
-This Plugin was built using the [nih_plug framework](https://github.com/robbert-vdh/nih-plug).
+This Plugin is built using the [nih_plug framework](https://github.com/robbert-vdh/nih-plug) with a .
 
 ## Building
 
-Precompiled binaries can be found in the [Releases tab](https://github.com/Leon-Focker/MetreFiddler/releases/)
+In the future, precompiled binaries can be found in the [Releases tab](https://github.com/Leon-Focker/MetreFiddler/releases/)
 
 After installing [Rust](https://rustup.rs/), you can compile MetreFiddler yourself as follows:
 
