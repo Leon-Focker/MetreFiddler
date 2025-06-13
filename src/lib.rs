@@ -29,9 +29,9 @@ struct MetreFiddlerParams {
     pub metric_dur_selector: FloatParam,
 
     #[id = "velocity_min"]
-    pub velocity_min: FloatParam,
+    pub velocity_min: IntParam,
     #[id = "velocity_max"]
-    pub velocity_max: FloatParam,
+    pub velocity_max: IntParam,
 
     #[id = "lower_threshold"]
     pub lower_threshold: FloatParam,
@@ -80,16 +80,16 @@ impl Default for MetreFiddlerParams {
 
             metre_data: Arc::new(Mutex::new(MetreData::default())),
 
-            velocity_min: FloatParam::new(
+            velocity_min: IntParam::new(
                 "Minimum for the velocity output",
-                0.0,
-                FloatRange::Linear { min: 0.0, max: 1.0},
+                0,
+                IntRange::Linear { min: 0, max: 127 },
             ),
-
-            velocity_max: FloatParam::new(
+            
+            velocity_max: IntParam::new(
                 "Maximum for the velocity output",
-                1.0,
-                FloatRange::Linear { min: 0.0, max: 1.0},
+                127,
+                IntRange::Linear { min: 0, max: 127 },
             ),
 
             lower_threshold: FloatParam::new(
@@ -178,7 +178,7 @@ impl Plugin for MetreFiddler {
         }
 
         //nih_log!("hihi I'm doing what i should: {:?}", self.params.metre_data.lock().unwrap().value);
-
+        // nih_log!("max: {}", self.params.metre_data.lock().unwrap().max);
                 
         for (sample_id, _channel_samples) in buffer.iter_samples().enumerate() {
             if context.transport().playing {

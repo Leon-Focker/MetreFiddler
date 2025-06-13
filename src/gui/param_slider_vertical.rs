@@ -5,6 +5,7 @@ use nih_plug_vizia::vizia::prelude::*;
 use nih_plug_vizia::widgets::param_base::ParamWidgetBase;
 use nih_plug_vizia::widgets::util::{self, ModifiersExt};
 
+
 /// When shift+dragging a parameter, one pixel dragged corresponds to this much change in the
 /// normalized parameter.
 const GRANULAR_DRAG_MULTIPLIER: f32 = 0.1;
@@ -59,6 +60,8 @@ pub enum ParamSliderStyle {
     /// The same as `CurrentStep`, but overlay the labels over the steps instead of showing the
     /// active value. Only useful for discrete parameters with two, maybe three possible values.
     CurrentStepLabeled { even: bool },
+    /// like FromLeft but scale the displayed value by this.
+    Scaled { factor: usize },
 }
 
 enum ParamSliderEvent {
@@ -217,7 +220,6 @@ impl ParamSliderV {
     }
 
     /// Create the fill part of the slider.
-    // TODO slider filled here
     fn slider_fill_view(
         cx: &mut Context,
         fill_start_delta_lens: impl Lens<Target = (f32, f32)>,
@@ -298,21 +300,23 @@ impl ParamSliderV {
             }
             _ => {
                 Binding::new(cx, label_override_lens, move |cx, label_override_lens| {
-                    // TODO added rounding to displayed value:
-                    let rounded_value_lens = display_value_lens.map(|value_str| {
-                        // Parse string to float, round, format back to string
-                        if let Ok(v) = value_str.parse::<f64>() {
-                            format!("{:.1}", v)  // 2 decimal places
-                        } else {
-                            value_str.clone()
-                        }
-                    });
-                    
                     // If the label override is set then we'll use that. If not, the parameter's
                     // current display value (before modulation) is used.
                     match label_override_lens.get(cx) {
                         Some(label_override) => Label::new(cx, &label_override),
-                        None => Label::new(cx, rounded_value_lens),
+                        None => Label::new(cx, display_value_lens.map( move |value_str| {
+                            match style {
+                                // When using the Scaled style, scale the parameter value by factor and round.
+                                ParamSliderStyle::Scaled { factor } => {
+                                    if let Ok(v) = value_str.parse::<f32>() {
+                                        (v * factor as f32).round().to_string()
+                                    } else {
+                                        value_str.clone()
+                                    }
+                                }
+                                _ => value_str.clone(),
+                            }
+                        })),
                     }
                         .class("value")
                         .class("value--single")
@@ -361,7 +365,8 @@ impl ParamSliderV {
                     if delta >= 1e-3 { delta } else { 0.0 },
                 )
             }
-            ParamSliderStyle::Centered | ParamSliderStyle::FromLeft => (0.0, current_value),
+            ParamSliderStyle::Centered | ParamSliderStyle::FromLeft 
+            | ParamSliderStyle::Scaled { .. } => (0.0, current_value),
             ParamSliderStyle::CurrentStep { even: true }
             | ParamSliderStyle::CurrentStepLabeled { even: true }
             if step_count.is_some() =>
@@ -399,7 +404,8 @@ impl ParamSliderV {
             }
             ParamSliderStyle::Centered
             | ParamSliderStyle::FromMidPoint
-            | ParamSliderStyle::FromLeft => {
+            | ParamSliderStyle::FromLeft 
+            | ParamSliderStyle::Scaled { .. } => {
                 let modulation_start = param.unmodulated_normalized_value();
 
                 (

@@ -7,6 +7,7 @@ use crate::metre::rqq::parse_rqq;
 pub struct MetreData {
     pub input: String,
     pub value: Vec<usize>,
+    pub max: usize,
 }
 
 impl Default for MetreData {
@@ -14,6 +15,7 @@ impl Default for MetreData {
         Self {
             input: String::from("(4 (1 1 1 1))"),
             value: vec![0, 3, 2, 1],
+            max: 3,
         }
     }
 }

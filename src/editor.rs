@@ -5,14 +5,22 @@ use nih_plug_vizia::{assets, create_vizia_editor, ViziaState, ViziaTheming};
 use std::sync::Arc;
 use nih_plug::nih_log;
 use crate::{MetreFiddlerParams};
-use crate::gui::param_slider_vertical::ParamSliderV;
+use crate::gui::param_slider_vertical::{ParamSliderExt, ParamSliderV};
+use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
 use crate::metre_data::parse_input;
+
+const PLUGIN_INFO_TEXT: &str = "
+     This is a lot of text that explains how this plugin works. 
+     It goes into detail about the features, usage, and limitations...
+";
+
 
 #[derive(Lens)]
 struct Data {
     params: Arc<MetreFiddlerParams>,
     text_input: String,
     last_input_is_valid: bool,
+    max_threshold: usize,
     display_metre_info: bool,
     reset_time: Option<Instant>,
     reset_timer: Option<Duration>,
@@ -38,7 +46,10 @@ impl Model for Data {
                     // parse String and send to Plugin
                     match parse_input(new_text) {
                         Ok(parsed_string) => {
+                            metre_data.max = *parsed_string.iter().max().unwrap_or(&1);
+                            self.max_threshold = metre_data.max;
                             metre_data.value = parsed_string;
+                            metre_data.input = new_text.clone();
                             self.last_input_is_valid = true;
                         },
                         Err(err_string) => {
@@ -81,7 +92,7 @@ impl Model for Data {
 
 // Makes sense to also define this here, makes it a bit easier to keep track of
 pub(crate) fn default_state() -> Arc<ViziaState> {
-    ViziaState::new(|| (500, 500))
+    ViziaState::new(|| (500, 300))
 }
 
 pub(crate) fn create(
@@ -92,10 +103,13 @@ pub(crate) fn create(
         assets::register_noto_sans_light(cx);
         assets::register_noto_sans_thin(cx);
 
+        let metre_data = params.metre_data.lock().unwrap();
+
         Data {
             params: params.clone(),
-            text_input: params.metre_data.lock().unwrap().input.clone(),
+            text_input: metre_data.input.clone(),
             last_input_is_valid: true,
+            max_threshold: metre_data.max.clone(),
             display_metre_info: false,
             reset_time: None,
             reset_timer: None,
@@ -113,108 +127,181 @@ pub(crate) fn create(
                 }
             }
         });
-
-        // Overlays its elements
-        ZStack::new(cx, |cx| {
-            // A Column
-            VStack::new(cx, |cx| {
+        
+        VStack::new(cx, |cx| {
+            ZStack::new(cx, |cx| {
+                // The upper part of the Plugin
+                upper_part(cx);
                 
-                // Upper Part of the Plugin
-                HStack::new(cx, |cx| {
-                    // min vel
-                    ParamSliderV::new(cx, Data::params, |params|
-                        &params.velocity_min);
-                        // .width(Pixels(50.0)).
-                        // height(Pixels(200.0));
-                    // max vel
-                    ParamSliderV::new(cx, Data::params, |params|
-                        &params.velocity_max);
-                        // .width(Pixels(50.0)).
-                        // height(Pixels(200.0));
-                        
-                    // Middle Part (Name, Duration, Buttons)
-                    // VStack::new(cx, |cx| {
-                    //     Label::new(cx, "MetreFiddler")
-                    //         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
-                    //         .font_weight(FontWeightKeyword::Thin)
-                    //         .font_size(40.0)
-                    //         .height(Pixels(50.0))
-                    //         .child_top(Stretch(1.0))
-                    //         .child_bottom(Pixels(0.0))
-                    //         .top(Pixels(10.0));
-                    //     
-                    //     HStack::new(cx, |cx| {
-                    //         // BPM Toggle
-                    //         ParamButton::new(cx, Data::params, |params| 
-                    //             &params.bpm_toggle);
-                    //         // Reset Phase
-                    //         Button::new(
-                    //             cx,
-                    //             |cx| {
-                    //                 cx.emit(MetreFiddlerEvent::TriggerPhaseReset);
-                    //             },
-                    //             |cx| Label::new(cx, "reset phase"));
-                    //     });
-                    // 
-                    //     Label::new(cx, "Duration")
-                    //         .top(Pixels(10.0));
-                    //     ParamSlider::new(cx, Data::params, |params| 
-                    //         &params.metric_dur_selector);
-                    // 
-                    // });
-                    
-                    // lower threshold
-                    ParamSlider::new(cx, Data::params, |params|
-                        &params.lower_threshold);
-                    // upper threshold
-                    ParamSlider::new(cx, Data::params, |params|
-                        &params.upper_threshold);
-                })
-                    .child_left(Pixels(0.0))
-                    .child_right(Pixels(0.0));
-                
-                // Lower Part, containing the Metre Definition
-                HStack::new(cx, |cx| {
-                    // Info Button
-                    Button::new(cx,
-                                |cx| { cx.emit(MetreFiddlerEvent::ToggleMetreInfo); },
-                                |cx| Label::new(cx, "info"));
-                    // Metre Input
-                    Textbox::new(cx, Data::text_input)
-                        .on_submit(|cx, text, _| {
-                            cx.emit(MetreFiddlerEvent::UpdateString(text));
-                        })
-                        .width(Stretch(1.0))
-                        .top(Pixels(10.0));
-                    // is valid
-                    Binding::new(cx, Data::last_input_is_valid, |cx, is_valid|{
-                        let is_valid = is_valid.get(cx);
-                        Label::new(cx, if is_valid { "✔️" } else { "❌" })
-                            .width(Stretch(1.0))
-                            .top(Pixels(15.0));
-                    });                        
-                })
-                    .background_color(Color::red());
+                //Information text displayed over plugin
+                Binding::new(cx, Data::display_metre_info, |cx, display| {
+                    if display.get(cx) {
+                        Element::new(cx)
+                            .text(PLUGIN_INFO_TEXT)
+                            .background_color(Color::white())
+                            .opacity(1.0);
+                    }
+                })                
             })
-                .row_between(Pixels(0.0)) ;// Space between elements in column
-               // .child_left(Stretch(1.0))
-                //.child_right(Stretch(1.0))
-                //.width(Stretch(1.0));
-
-            //Information text displayed over plugin
-            Binding::new(cx, Data::display_metre_info, |cx, display| {
-                if display.get(cx) {
-                    Element::new(cx)
-                        .text("This is a lot of text")
-                        .width(Pixels(100.0))
-                        .height(Pixels(100.0))
-                        .background_color(Color::black());
-                }
-            })
+                .height(Stretch(5.0));
+            
+            // Lower Part of the Plugin
+            lower_part(cx);
         })
-            .width(Stretch(1.0));
-
+            .row_between(Pixels(0.0)) ;// Space between elements in column
 
         ResizeHandle::new(cx);
     })
+}
+
+// Upper Part of the Plugin
+fn upper_part(cx: &mut Context) {
+    HStack::new(cx, |cx| {
+        // The Velocity Sliders
+        VStack::new(cx, |cx| {
+            HStack::new(cx, |cx| {
+                // min vel
+                VStack::new(cx, |cx| {
+                    ParamSliderV::new(cx, Data::params, |params|
+                        &params.velocity_min);
+                    Label::new(cx, "min");
+                });
+                // max vel
+                VStack::new(cx, |cx| {
+                    ParamSliderV::new(cx, Data::params, |params|
+                        &params.velocity_max);
+                    Label::new(cx, "max");
+                })
+                    .left(Pixels(15.0));
+            })
+                .child_left(Stretch(1.0))
+                .child_right(Stretch(1.0))
+                .child_top(Stretch(0.1));
+
+            Label::new(cx, "Velocity")
+                .font_weight(FontWeightKeyword::Bold)
+                .left(Stretch(1.0))
+                .right(Stretch(1.0))
+                .child_bottom(Pixels(10.0));
+        })
+            .width(Stretch(1.0));
+
+        // Middle Part (Name, Duration, Buttons)
+        VStack::new(cx, |cx| {
+            Label::new(cx, "MetreFiddler")
+                .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                .font_weight(FontWeightKeyword::Thin)
+                .font_size(40.0)
+                .height(Pixels(50.0))
+                .child_bottom(Pixels(0.0))
+                .top(Stretch(0.1));
+
+            Label::new(cx, "Duration")
+                .font_weight(FontWeightKeyword::Bold)
+                .top(Stretch(1.5));
+            // TODO This slider should display a more useful value
+            ParamSlider::new(cx, Data::params, |params|
+                &params.metric_dur_selector)
+                .width(Pixels(200.0))
+                .bottom(Pixels(0.0));
+
+            HStack::new(cx, |cx| {
+                // BPM Toggle
+                // TODO maybe swap labels according to Param?
+                ParamButton::new(cx, Data::params, |params|
+                    &params.bpm_toggle)
+                    .width(Pixels(100.0));
+                // Reset Phase
+                Button::new(
+                    cx,
+                    |cx| {
+                        cx.emit(MetreFiddlerEvent::TriggerPhaseReset);
+                    },
+                    |cx| Label::new(cx, "reset phase"))
+                    .width(Pixels(100.0));
+            })
+                .top(Pixels(10.0))
+                .child_space(Stretch(1.0));
+        })
+            .top(Stretch(0.2))
+            .width(Stretch(2.0))
+            .child_space(Stretch(1.0));
+
+        // The Threshold Sliders
+        VStack::new(cx, |cx| {
+            HStack::new(cx, |cx| {
+                Binding::new(cx, Data::max_threshold, |cx, max| {
+                    let max_val = max.get(cx);
+
+                    VStack::new(cx, |cx| {
+                        ParamSliderV::new(cx, Data::params, |params|
+                            &params.lower_threshold)
+                            .set_style(Scaled {factor: max_val});
+                        Label::new(cx, "min");
+                    });
+
+                    VStack::new(cx, |cx| {
+                        ParamSliderV::new(cx, Data::params, |params|
+                            &params.upper_threshold)
+                            .set_style(Scaled { factor: max_val });
+                        Label::new(cx, "max");
+                    })
+                        .left(Pixels(15.0));
+                }); 
+            })
+                .child_left(Stretch(1.0))
+                .child_right(Stretch(1.0))
+                .child_top(Stretch(0.1));
+            
+            Label::new(cx, "Threshold")
+                .font_weight(FontWeightKeyword::Bold)
+                .left(Stretch(1.0))
+                .right(Stretch(1.0))
+                .child_bottom(Pixels(10.0));
+        })
+            .width(Stretch(1.0));
+    })
+        .child_left(Pixels(0.0))
+        .child_right(Pixels(0.0));
+}
+
+// Lower Part of the Plugin, containing the Metre Definition
+fn lower_part(cx: &mut Context) {
+    HStack::new(cx, |cx| {
+        // Info Button
+        VStack::new(cx, |cx| {
+            Button::new(cx,
+                        |cx| { cx.emit(MetreFiddlerEvent::ToggleMetreInfo); },
+                        |cx| Label::new(cx, "info"))
+                .right(Pixels(10.0));     
+        })
+            .top(Pixels(0.0))
+            .bottom(Pixels(0.0))
+            .left(Pixels(0.0))
+            .right(Pixels(0.0))
+            .child_space(Stretch(1.0));
+       
+        // Metre Input
+        Textbox::new(cx, Data::text_input)
+            .on_submit(|cx, text, _| {
+                cx.emit(MetreFiddlerEvent::UpdateString(text));
+            })
+            .width(Stretch(3.0));
+        
+        // is valid
+        VStack::new(cx, |cx| {
+            Binding::new(cx, Data::last_input_is_valid, |cx, is_valid|{
+                let is_valid = is_valid.get(cx);
+                Label::new(cx, if is_valid { "✔️" } else { "❌" })
+                    .left(Pixels(10.0));
+            }); 
+        })
+            .top(Pixels(0.0))
+            .bottom(Pixels(0.0))
+            .left(Pixels(0.0))
+            .right(Pixels(0.0))
+            .child_space(Stretch(1.0));
+    })
+        //.height(Stretch(1.0))
+        .child_space(Stretch(1.0));
 }
