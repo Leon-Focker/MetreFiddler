@@ -1,4 +1,5 @@
-//! A slider that integrates with NIH-plug's [`Param`] types.
+// This is a modified copy of nih-plugs param_slider.rs
+// ! A slider that integrates with NIH-plug's [`Param`] types.
 use nih_plug::prelude::Param;
 use nih_plug_vizia::vizia::prelude::*;
 use nih_plug_vizia::widgets::param_base::ParamWidgetBase;
@@ -162,7 +163,6 @@ impl ParamSliderV {
                                 if text_input_active.get(cx) {
                                     Self::text_input_view(cx, display_value_lens);
                                 } else {
-                                    // TODO here the label_view is stacked on top of the slider
                                     ZStack::new(cx, |cx| {
                                         Self::slider_fill_view(
                                             cx,
@@ -178,15 +178,16 @@ impl ParamSliderV {
                                             ParamSliderV::label_override,
                                         );
                                     })
-                                        .hoverable(false)
-                                        .width(Pixels(20.0))
-                                        .height(Pixels(100.0));
+                                        .hoverable(false);
                                 }
                             },
                         );
                     });
                 }),
             )
+            // To override the css styling:
+            .width(Pixels(30.0))
+            .height(Pixels(180.0))
     }
 
     /// Create a text input that's shown in place of the slider.
@@ -227,7 +228,9 @@ impl ParamSliderV {
         Element::new(cx)
             .class("fill")
             .width(Stretch(1.0))
-            .top(fill_start_delta_lens.map(|(start_t, _)| Percentage(start_t * 100.0)))
+            // TODO slider starts from bottom, not top:
+            .top(fill_start_delta_lens.map(|(_start_t, delta)| Percentage((1.0 - delta) * 100.0)))
+            //.top(fill_start_delta_lens.map(|(start_t, _)| Percentage(start_t* 100.0)))
             .height(fill_start_delta_lens.map(|(_, delta)| Percentage(delta * 100.0)))
             // Hovering is handled on the param slider as a whole, this
             // should not affect that
@@ -236,6 +239,7 @@ impl ParamSliderV {
         // If the parameter is being modulated, then we'll display another
         // filled bar showing the current modulation delta
         // VIZIA's bindings make this a bit, uh, difficult to read
+        // TODO didn't change anything here yet
         Element::new(cx)
             .class("fill")
             .class("fill--modulation")
@@ -278,7 +282,7 @@ impl ParamSliderV {
                     for value in 0..step_count + 1 {
                         let normalized_value = value as f32 / step_count as f32;
                         let preview_lens = make_preview_value_lens(normalized_value);
-
+        
                         Label::new(cx, preview_lens)
                             .class("value")
                             .class("value--multiple")
@@ -294,13 +298,21 @@ impl ParamSliderV {
             }
             _ => {
                 Binding::new(cx, label_override_lens, move |cx, label_override_lens| {
+                    // TODO added rounding to displayed value:
+                    let rounded_value_lens = display_value_lens.map(|value_str| {
+                        // Parse string to float, round, format back to string
+                        if let Ok(v) = value_str.parse::<f64>() {
+                            format!("{:.1}", v)  // 2 decimal places
+                        } else {
+                            value_str.clone()
+                        }
+                    });
+                    
                     // If the label override is set then we'll use that. If not, the parameter's
                     // current display value (before modulation) is used.
                     match label_override_lens.get(cx) {
                         Some(label_override) => Label::new(cx, &label_override),
-                        None => Label::new(cx, display_value_lens),
-                        // TODO this doesn't work for rounding:
-                        // (display_value_lens.get(cx).parse::<f32>().unwrap() * 10.0).round() / 10.0
+                        None => Label::new(cx, rounded_value_lens),
                     }
                         .class("value")
                         .class("value--single")
@@ -312,8 +324,7 @@ impl ParamSliderV {
             }
         };
     }
-
-    // TODO compute slider fill value
+    
     /// Calculate the start position and width of the slider's fill region based on the selected
     /// style, the parameter's current value, and the parameter's step sizes. The resulting tuple
     /// `(start_t, delta)` corresponds to the start and the signed width of the bar. `start_t` is in
@@ -336,7 +347,7 @@ impl ParamSliderV {
                 // Don't draw the filled portion at all if it could have been a
                 // rounding error since those slivers just look weird
                 (
-                    default_value.min(current_value),
+                    1.0 - default_value.min(current_value),
                     if delta >= 1e-3 { delta } else { 0.0 },
                 )
             }
@@ -521,7 +532,7 @@ impl View for ParamSliderV {
                     meta.consume();
                 }
             }
-            WindowEvent::MouseMove(x, _y) => {
+            WindowEvent::MouseMove(_x, y) => {
                 if self.drag_active {
                     // If shift is being held then the drag should be more granular instead of
                     // absolute
@@ -530,28 +541,29 @@ impl View for ParamSliderV {
                             *self
                                 .granular_drag_status
                                 .get_or_insert_with(|| GranularDragStatus {
-                                    starting_y_coordinate: *x,
+                                    starting_y_coordinate: *y,
                                     starting_value: self.param_base.unmodulated_normalized_value(),
                                 });
 
                         // These positions should be compensated for the DPI scale so it remains
                         // consistent
-                        let start_x =
+                        let start_y =
                             util::remap_current_entity_x_t(cx, granular_drag_status.starting_value);
-                        let delta_x = ((*x - granular_drag_status.starting_y_coordinate)
+                        let delta_y = ((*y - granular_drag_status.starting_y_coordinate)
                             * GRANULAR_DRAG_MULTIPLIER)
                             * cx.scale_factor();
 
+                        // TODO set to 1.0 - ... to invert slider:
                         self.set_normalized_value_drag(
                             cx,
-                            util::remap_current_entity_y_coordinate(cx, start_x + delta_x),
+                            1.0 - util::remap_current_entity_y_coordinate(cx, start_y + delta_y),
                         );
                     } else {
                         self.granular_drag_status = None;
 
                         self.set_normalized_value_drag(
                             cx,
-                            util::remap_current_entity_y_coordinate(cx, *x),
+                            1.0 - util::remap_current_entity_y_coordinate(cx, *y),
                         );
                     }
                 }
