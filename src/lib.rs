@@ -1,6 +1,8 @@
 use nih_plug::prelude::*;
 use nih_plug_vizia::ViziaState;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::SeqCst;
 use crate::metre_data::{MetreData};
 
 mod editor;
@@ -13,6 +15,7 @@ struct MetreFiddler {
     sample_rate: f32,
     samples_since_trigger: usize,
     last_reset_phase_value: bool,
+    metric_duration: f32,
 }
 
 #[derive(Params)]
@@ -40,6 +43,8 @@ struct MetreFiddlerParams {
 
     #[id = "reset_phase"]
     pub reset_phase: BoolParam,
+    
+    pub reset_info: Arc<AtomicBool>,
 
     // custom data struct, marked with `#[persist]`
     // The `Arc<Mutex<CustomData>>` allows to share and modify it
@@ -56,6 +61,7 @@ impl Default for MetreFiddler {
             sample_rate: 1.0,
             samples_since_trigger: 0,
             last_reset_phase_value: false,
+            metric_duration: 1.0,
         }
     }
 }
@@ -76,7 +82,8 @@ impl Default for MetreFiddlerParams {
                 "Duration Selection",
                 1.0,
                 FloatRange::Linear { min: 0.0, max: 10.0},
-            ),
+            )
+                 .with_smoother(SmoothingStyle::Linear(50.0)),
 
             metre_data: Arc::new(Mutex::new(MetreData::default())),
 
@@ -108,20 +115,42 @@ impl Default for MetreFiddlerParams {
                 "Reset metric phasse",
                 false
             ),
+            
+            reset_info: Arc::new(AtomicBool::new(false)),
         }
     }
 }
 
+fn decider(normalized_posiion: f32, weights: Vec<f32>) -> usize {
+    // TODO
+    0
+}
 impl MetreFiddler {
-    fn trigger_event(&mut self) -> bool {
-        let passed_time = self.samples_since_trigger as f32 / self.sample_rate;
-        
-        if passed_time >= self.params. metric_dur_selector.value() {
-            self.samples_since_trigger = 0;
-            true
-        } else {
-            self.samples_since_trigger += 1;
-            false }
+    // Todo
+    fn process_event<S: SysExMessage>(&mut self, event: NoteEvent<S>, elapsed_samples: u32) -> Option<NoteEvent<S>> {
+        let metric_data = self.params.metre_data.lock().unwrap();
+        let durations = metric_data.durations.clone();
+        let indisp_ls = metric_data.value.clone();
+        let normalized_position = 0.0; // TODO
+        let indisp_val = indisp_ls[decider(normalized_position, durations)];
+
+        match event {
+            NoteEvent::NoteOn {
+                timing,
+                voice_id,
+                channel,
+                note,
+                velocity,
+            } => Some(NoteEvent::NoteOn {
+                timing,
+                voice_id,
+                channel,
+                note,
+                velocity,
+            }),
+            _ => None,
+        }
+
     }
 }
 
@@ -166,47 +195,54 @@ impl Plugin for MetreFiddler {
 
     fn process(
         &mut self,
-        buffer: &mut Buffer,
+        _buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         
-        // TODO change self.params. metric_dur_selector according to bpm_toggle...
-        // so that 1 = a quarter note.
-        if self.params.bpm_toggle.value() {
-            let _bpm = context.transport().tempo;    
-        }
-
-        //nih_log!("hihi I'm doing what i should: {:?}", self.params.metre_data.lock().unwrap().value);
-        // nih_log!("max: {}", self.params.metre_data.lock().unwrap().max);
+        let mut current_sample = 0;
+        let mut last_note_was_let_through = true;
                 
-        for (sample_id, _channel_samples) in buffer.iter_samples().enumerate() {
-            if context.transport().playing {
-                if self.trigger_event() {
-                    context.send_event(NoteEvent::NoteOn {
-                        timing: sample_id as u32,
-                        voice_id: Some(0),
-                        channel: 0,
-                        note: 60,
-                        velocity: 1.0,
-                    });
-                    context.send_event(NoteEvent::NoteOn {
-                        timing: sample_id as u32,
-                        voice_id: Some(0),
-                        channel: 0,
-                        note: 60,
-                        velocity: 1.0,
-                    });
-                }
-            }
-
-            // Reset Phase
-            if !self.last_reset_phase_value && self.params.reset_phase.value() {
-                // TODO reset phase
+        // automated value
+        if self.params.reset_phase.value() {
+            if ! self.last_reset_phase_value {
+                // TODO reset phase here:
                 nih_log!("hihi I'm doing what i should: {:?}", self.params.reset_phase.value());
-            };
-            self.last_reset_phase_value = self.params.reset_phase.value();
+            }
+            // message to gui
+            self.params.reset_info.store(false, SeqCst)
+        }
+        self.last_reset_phase_value = self.params.reset_phase.value();
+        
+        // TODO all of this is only done once per buffer right? is that meh?
+        // with .smoothed.next_step() one can get smoothed values without iterating over all samples.
+        // TODO set self.metric_duration according to bpm toggle:
+        self.metric_duration = self.params.metric_dur_selector.value();
+        //if self.params.bpm_toggle.value() }
+        
+        // handle all incoming events
+        while let Some(event) = context.next_event() {
+            let elapsed_samples = event.timing() - current_sample;
+            current_sample += elapsed_samples;
 
+            // TODO get all relevant parameters here.
+
+            match event {
+                // NoteEvent::NoteOn {..} => {
+                //     if let Some(event) = self.process_event(event, elapsed_samples) {
+                //         context.send_event(event);
+                //         last_note_was_let_through = true;
+                //     } else {
+                //         last_note_was_let_through = false;
+                //     }
+                // },
+                NoteEvent::NoteOff {..} => {
+                    if last_note_was_let_through {
+                        context.send_event(event)
+                    }
+                },
+                _ => context.send_event(event),
+            }
         }
 
         ProcessStatus::Normal

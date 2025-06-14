@@ -3,8 +3,11 @@ use nih_plug_vizia::vizia::prelude::*;
 use nih_plug_vizia::widgets::*;
 use nih_plug_vizia::{assets, create_vizia_editor, ViziaState, ViziaTheming};
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::SeqCst;
 use nih_plug::nih_log;
 use crate::{MetreFiddlerParams};
+use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
 use crate::gui::param_slider_vertical::{ParamSliderExt, ParamSliderV};
 use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
 use crate::metre_data::parse_input;
@@ -22,8 +25,7 @@ struct Data {
     last_input_is_valid: bool,
     max_threshold: usize,
     display_metre_info: bool,
-    reset_time: Option<Instant>,
-    reset_timer: Option<Duration>,
+    check_for_phase_reset_toggle: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -32,7 +34,7 @@ pub enum MetreFiddlerEvent {
     ToggleMetreInfo,
     TriggerPhaseReset,
     RevertPhaseReset,
-    PhaseResetCounter,
+    ToggleCheckForPhaseReset,
 }
 
 impl Model for Data {
@@ -62,27 +64,28 @@ impl Model for Data {
                 println!("hey! you clicked a button!")
             }
             MetreFiddlerEvent::TriggerPhaseReset => {
+                self.params.reset_info.store(true, SeqCst);
+                self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle;
+                
                 let param_ref = &self.params.reset_phase;
 
                 cx.emit(ParamEvent::BeginSetParameter(param_ref).upcast());
                 cx.emit(ParamEvent::SetParameter(param_ref, true).upcast());
                 cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
-
-                self.reset_time = Some(Instant::now());
-                self.reset_timer = Some(Duration::from_millis(0));
             }
-            MetreFiddlerEvent::RevertPhaseReset => {
+            RevertPhaseReset => {                
                 let param_ref = &self.params.reset_phase;
 
                 cx.emit(ParamEvent::BeginSetParameter(param_ref).upcast());
                 cx.emit(ParamEvent::SetParameter(param_ref, false).upcast());
                 cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
-
-                self.reset_time = None;
-                self.reset_timer = None;
             }
-            MetreFiddlerEvent::PhaseResetCounter => {
-                self.reset_timer = Some(Instant::now().duration_since(self.reset_time.unwrap()));
+            MetreFiddlerEvent::ToggleCheckForPhaseReset => {
+                if self.params.reset_info.load(SeqCst) == false {
+                    cx.emit(RevertPhaseReset);
+                } else {
+                    self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle; 
+                }
             }
         });
     }
@@ -109,21 +112,14 @@ pub(crate) fn create(
             last_input_is_valid: true,
             max_threshold: metre_data.max.clone(),
             display_metre_info: false,
-            reset_time: None,
-            reset_timer: None,
+            check_for_phase_reset_toggle: false,
         }
             .build(cx);
 
         // This is a kinda hacky way to get the button and BoolParm to reset itself, but keeping
         // DAW Automation possible...
-        Binding::new(cx, Data::reset_timer, |cx, timer| {
-            if let Some(time) = timer.get(cx) {
-                if time >= Duration::from_millis(100) {
-                    cx.emit(MetreFiddlerEvent::RevertPhaseReset);
-                } else {
-                    cx.emit(MetreFiddlerEvent::PhaseResetCounter);
-                }
-            }
+        Binding::new(cx, Data::check_for_phase_reset_toggle, |cx, _was_reset| {
+            cx.emit(MetreFiddlerEvent::ToggleCheckForPhaseReset);
         });
         
         VStack::new(cx, |cx| {
