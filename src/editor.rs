@@ -45,11 +45,9 @@ impl Model for Data {
                     self.text_input = new_text.clone();
                     // parse String and send to Plugin
                     match parse_input(new_text) {
-                        Ok(parsed_string) => {
-                            metre_data.max = *parsed_string.iter().max().unwrap_or(&1);
+                        Ok(new_metre_data) => {
+                            *metre_data = new_metre_data;
                             self.max_threshold = metre_data.max;
-                            metre_data.value = parsed_string;
-                            metre_data.input = new_text.clone();
                             self.last_input_is_valid = true;
                         },
                         Err(err_string) => {

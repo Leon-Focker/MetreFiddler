@@ -92,6 +92,46 @@ impl RQQ {
             },
         }
     }
+    
+    fn rqq_num_divisions(&self) -> f32 {
+        let mut result = 0.0;
+        if let List(vec) = self {
+            for divs in vec {
+                match divs {
+                    Elem(val) => result += val,
+                    List(vec) => result += 
+                        match vec[0] {
+                            Elem(val) => val,
+                            _ => 0.0
+                        }
+                }
+            }
+        }
+        result
+    }
+    
+    pub fn to_durations(&self, parent_dur: f32) -> Vec<f32> {
+        match self {
+            Elem(val) => vec![*val / parent_dur],
+            List(vec) => {
+                let second_divs = &vec[1];
+                let second_divs_vec = match second_divs {
+                    List(v) => v,
+                    _ => &vec![second_divs.clone()],
+                };
+                let rqqnd = second_divs.rqq_num_divisions();
+                let this_dur = match &vec[0] {
+                    Elem(val) => *val,
+                    _ => 1.0,
+                };
+                let pd = (parent_dur * rqqnd) / this_dur;
+                second_divs_vec.iter()
+                    .flat_map(|div| div.to_durations(pd))
+                    .collect()
+            }
+        }
+    }
+
 }
 
 pub fn parse_rqq(input: &str) ->  Result<RQQ, String> {
