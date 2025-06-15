@@ -1711,6 +1711,7 @@ dependencies = [
  "atomic_float",
  "nih_plug",
  "nih_plug_vizia",
+ "num-traits",
  "serde",
 ]
 
