@@ -276,6 +276,7 @@ fn lower_part(cx: &mut Context) {
             .child_space(Stretch(1.0));
        
         // Metre Input
+        // TODO Make this work in windows and getting the right keys would be nice as well. 
         Textbox::new(cx, Data::text_input)
             .on_submit(|cx, text, _| {
                 cx.emit(MetreFiddlerEvent::UpdateString(text));
