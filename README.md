@@ -1,6 +1,6 @@
 # MetreFiddler
 
-This Plugin is built using the [nih_plug framework](https://github.com/robbert-vdh/nih-plug) with a .
+This Plugin is built using the [nih_plug framework](https://github.com/robbert-vdh/nih-plug) with a GUI powered by vizia.
 
 ## Building
 

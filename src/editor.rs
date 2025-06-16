@@ -3,7 +3,6 @@ use nih_plug_vizia::vizia::prelude::*;
 use nih_plug_vizia::widgets::*;
 use nih_plug_vizia::{assets, create_vizia_editor, ViziaState, ViziaTheming};
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::SeqCst;
 use nih_plug::nih_log;
 use crate::{MetreFiddlerParams};
@@ -12,6 +11,7 @@ use crate::gui::param_slider_vertical::{ParamSliderExt, ParamSliderV};
 use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
 use crate::metre_data::parse_input;
 
+// TODO
 const PLUGIN_INFO_TEXT: &str = "
      This is a lot of text that explains how this plugin works. 
      It goes into detail about the features, usage, and limitations...
@@ -157,13 +157,15 @@ fn upper_part(cx: &mut Context) {
                 // min vel
                 VStack::new(cx, |cx| {
                     ParamSliderV::new(cx, Data::params, |params|
-                        &params.velocity_min);
+                        &params.velocity_min)
+                        .set_style(Scaled {factor: 1});
                     Label::new(cx, "min");
                 });
                 // max vel
                 VStack::new(cx, |cx| {
                     ParamSliderV::new(cx, Data::params, |params|
-                        &params.velocity_max);
+                        &params.velocity_max)
+                        .set_style(Scaled {factor: 1});
                     Label::new(cx, "max");
                 })
                     .left(Pixels(15.0));

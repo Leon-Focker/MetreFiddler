@@ -39,9 +39,9 @@ struct MetreFiddlerParams {
     pub metric_dur_selector: FloatParam,
 
     #[id = "velocity_min"]
-    pub velocity_min: IntParam,
+    pub velocity_min: FloatParam,
     #[id = "velocity_max"]
-    pub velocity_max: IntParam,
+    pub velocity_max: FloatParam,
 
     #[id = "lower_threshold"]
     pub lower_threshold: FloatParam,
@@ -101,17 +101,17 @@ impl Default for MetreFiddlerParams {
 
             metre_data: Arc::new(Mutex::new(MetreData::default())),
 
-            velocity_min: IntParam::new(
+            velocity_min: FloatParam::new(
                 "Minimum for the velocity output",
-                0,
-                IntRange::Linear { min: 0, max: 127 },
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 127.0 },
             )
                 .with_smoother(Linear(50.0)),
             
-            velocity_max: IntParam::new(
+            velocity_max: FloatParam::new(
                 "Maximum for the velocity output",
-                127,
-                IntRange::Linear { min: 0, max: 127 },
+                127.0,
+                FloatRange::Linear { min: 0.0, max: 127.0 },
             )
                 .with_smoother(Linear(50.0)),
 
@@ -156,9 +156,9 @@ impl MetreFiddler {
         } else { 0 };
         let indisp_val = indisp_ls[indisp_idx];
         // velocity in range 0 - 1, rescaled by vel_min and vel_max parameters
-        let vel: f32 = rescale(1.0 / (indisp_val + 1) as f32, 0.0, 1.0, self.vel_min, self.vel_max, true)
+        let vel: f32 = rescale(1.0 / (indisp_val + 1) as f32, 0.0, 1.0, self.vel_min / 127.0, self.vel_max / 127.0, true)
             .unwrap_or(0.8);
-
+        
         match event {
             NoteEvent::NoteOn {
                 timing,
@@ -244,6 +244,8 @@ impl Plugin for MetreFiddler {
         }
         self.last_reset_phase_value = self.params.reset_phase.value();
         
+        // TODO reset progress when playback stops.
+        
         // handle all incoming events
         while let Some(event) = context.next_event() {
             // samples since last event
@@ -253,13 +255,13 @@ impl Plugin for MetreFiddler {
             current_sample += elapsed_samples;
 
             // get all parameters for this event
-            // TODO should the velocity Parameter be a FloatParam instead of Int? 
-            self.vel_min = self.params.velocity_min.smoothed.next_step(elapsed_samples) as f32;
-            self.vel_max = self.params.velocity_max.smoothed.next_step(elapsed_samples) as f32;
+            self.vel_min = self.params.velocity_min.smoothed.next_step(elapsed_samples);
+            self.vel_max = self.params.velocity_max.smoothed.next_step(elapsed_samples);
             self.lower_threshold = self.params.lower_threshold.smoothed.next_step(elapsed_samples);
             self.upper_threshold = self.params.upper_threshold.smoothed.next_step(elapsed_samples);
             
             // set duration to length of a quarter note times the slider when bpm toggle is true:
+            // TODO would be nice to be able to snap the duration in quarters...
             self.metric_duration = 
             if self.params.bpm_toggle.value() {
                 let one_crotchet = 60.0 / if let Some(tempo) = context.transport().tempo {
