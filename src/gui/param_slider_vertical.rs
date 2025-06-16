@@ -507,7 +507,8 @@ impl View for ParamSliderV {
                         self.granular_drag_status = None;
                         self.set_normalized_value_drag(
                             cx,
-                            util::remap_current_entity_y_coordinate(cx, cx.mouse().cursory),
+                            // TODO set to 1.0 - ... to invert slider:
+                            1.0 - util::remap_current_entity_y_coordinate(cx, cx.mouse().cursory),
                         );
                     }
                 }
