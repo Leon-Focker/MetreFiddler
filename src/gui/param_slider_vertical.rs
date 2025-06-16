@@ -309,7 +309,7 @@ impl ParamSliderV {
                                 // When using the Scaled style, scale the parameter value by factor and round.
                                 ParamSliderStyle::Scaled { factor } => {
                                     if let Ok(v) = value_str.parse::<f32>() {
-                                        (v * factor as f32).round().to_string()
+                                        (v * factor as f32).floor().to_string()
                                     } else {
                                         value_str.clone()
                                     }

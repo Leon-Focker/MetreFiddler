@@ -9,10 +9,9 @@ pub fn rescale<T: Num + PartialOrd + Copy + Debug>(
     new_min: T,
     new_max: T,
     clamp_out_of_range: bool,
-) -> Result<T, String> {
-    if min >= max || new_min >= new_max {
-        return Err(format!("rescale: min ({:?}) must be < max ({:?}) and new_min ({:?}) < new_max ({:?})",
-                           min, max, new_min, new_max))
+) -> Result<T, &'static str> {
+    if min >= max || new_min >= new_max { 
+        return Err("rescale: min must be < max and new_min < new_max!")
     };
 
     let mut val = val;
@@ -25,8 +24,7 @@ pub fn rescale<T: Num + PartialOrd + Copy + Debug>(
                 max
             } else { val };
         } else {
-            return Err(format!("rescale: value {:?} out of range ({:?} to {:?})",
-            val, min, max))
+            return Err("rescale: value out of range!")
         }
     }
 

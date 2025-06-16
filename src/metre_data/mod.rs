@@ -28,7 +28,7 @@ pub fn parse_input(text: &str) -> Result<MetreData, String> {
     let sum: f32 = durations.iter().sum();
     let durations = durations.iter().map(|x| x / sum).collect::<Vec<f32>>();
     let value = rqq_to_indispensability_list(rqq)?;
-    dbg!(&durations);
+    
     Ok(
         MetreData {
             input: String::from(text),

@@ -1,6 +1,6 @@
 use nih_plug::prelude::*;
 use nih_plug_vizia::ViziaState;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::SeqCst;
 use nih_plug::prelude::SmoothingStyle::Linear;
@@ -32,8 +32,8 @@ struct MetreFiddlerParams {
     #[persist = "editor-state"]
     editor_state: Arc<ViziaState>,
 
-    #[id = "bpm_toggle"]
-    pub bpm_toggle: BoolParam,
+    #[id = "use_bpm"]
+    pub use_bpm: BoolParam,
     
     #[id = "metric_dur_selector"]
     pub metric_dur_selector: FloatParam,
@@ -53,6 +53,8 @@ struct MetreFiddlerParams {
     
     // TODO it would be great to have a parameter representing the normalized duration in a bar, 
     //   so that this can be accurately set by the DAW. 
+    
+    // TODO skew for velocity_curve
     
     pub reset_info: Arc<AtomicBool>,
 
@@ -86,16 +88,16 @@ impl Default for MetreFiddlerParams {
             editor_state: editor::default_state(),
 
             // Select whether to match speed to the DAW's BPM
-            bpm_toggle: BoolParam::new(
-                "BPM Toggle",
+            use_bpm: BoolParam::new(
+                "Use BPM",
                 false
             ),
             
             // Select the duration for the metric duration
              metric_dur_selector: FloatParam::new(
-                "Duration Selection",
-                1.0,
-                FloatRange::Linear { min: 0.0, max: 10.0},
+                 "Duration Selection",
+                 1.0,
+                 FloatRange::Skewed{ min: 0.1, max: 20.0, factor: 0.5 },
             )
                  .with_smoother(Linear(50.0)),
 
@@ -156,9 +158,15 @@ impl MetreFiddler {
         } else { 0 };
         let indisp_val = indisp_ls[indisp_idx];
         // velocity in range 0 - 1, rescaled by vel_min and vel_max parameters
-        let vel: f32 = rescale(1.0 / (indisp_val + 1) as f32, 0.0, 1.0, self.vel_min / 127.0, self.vel_max / 127.0, true)
-            .unwrap_or(0.8);
-        
+        let v_min: f32 = self.vel_min.min(self.vel_max) / 127.0;
+        let v_max: f32 = self.vel_max / 127.0;
+        let vel: f32 = if v_min == v_max {
+            v_min
+        } else {
+            rescale(1.0 / (indisp_val + 1) as f32, 0.0, 1.0, v_min, v_max, true)
+                .unwrap_or(0.8)
+        };
+
         match event {
             NoteEvent::NoteOn {
                 timing,
@@ -166,7 +174,7 @@ impl MetreFiddler {
                 channel,
                 note,
                 ..
-            } => { if indisp_val >= (self.lower_threshold * max as f32) as usize 
+            } => { if indisp_val >= (self.lower_threshold.min(self.upper_threshold) * max as f32) as usize 
                 && indisp_val <= (self.upper_threshold * max as f32) as usize {                
                 Some(NoteEvent::NoteOn {
                     timing,
@@ -227,11 +235,16 @@ impl Plugin for MetreFiddler {
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
-    ) -> ProcessStatus {
-        
+    ) -> ProcessStatus {        
         let mut current_sample: u32 = 0;
         let buffer_len = buffer.samples();
         let mut last_note_was_let_through = true;
+        let mut elapsed_samples: u32 = 0;
+
+        // reset progress when playback stops.
+        if !context.transport().playing {
+            self.progress_in_samples = 0;
+        }
                 
         // automated value
         if self.params.reset_phase.value() {
@@ -244,35 +257,37 @@ impl Plugin for MetreFiddler {
         }
         self.last_reset_phase_value = self.params.reset_phase.value();
         
-        // TODO reset progress when playback stops.
-        
         // handle all incoming events
         while let Some(event) = context.next_event() {
             // samples since last event
-            let elapsed_samples = event.timing() - current_sample;
+            elapsed_samples = event.timing() - current_sample;
             // update progress
             self.progress_in_samples += elapsed_samples as u64;
             current_sample += elapsed_samples;
 
             // get all parameters for this event
-            self.vel_min = self.params.velocity_min.smoothed.next_step(elapsed_samples);
-            self.vel_max = self.params.velocity_max.smoothed.next_step(elapsed_samples);
-            self.lower_threshold = self.params.lower_threshold.smoothed.next_step(elapsed_samples);
-            self.upper_threshold = self.params.upper_threshold.smoothed.next_step(elapsed_samples);
+            if elapsed_samples > 0 {
+                self.vel_min = self.params.velocity_min.smoothed.next_step(elapsed_samples);
+                self.vel_max = self.params.velocity_max.smoothed.next_step(elapsed_samples);
+                self.lower_threshold = self.params.lower_threshold.smoothed.next_step(elapsed_samples);
+                self.upper_threshold = self.params.upper_threshold.smoothed.next_step(elapsed_samples);
+                self.metric_duration =  self.params.metric_dur_selector.smoothed.next_step(elapsed_samples)
+            } else {
+                self.vel_min = self.params.velocity_min.value();
+                self.vel_max = self.params.velocity_max.value();
+                self.lower_threshold = self.params.lower_threshold.value();
+                self.upper_threshold = self.params.upper_threshold.value();
+                self.metric_duration =  self.params.metric_dur_selector.value();
+            }
             
             // set duration to length of a quarter note times the slider when bpm toggle is true:
-            // TODO would be nice to be able to snap the duration in quarters...
-            self.metric_duration = 
-            if self.params.bpm_toggle.value() {
+            if self.params.use_bpm.value() {
                 let one_crotchet = 60.0 / if let Some(tempo) = context.transport().tempo {
                     tempo
                 } else { 60.0 };
-                one_crotchet as f32 * self.params.metric_dur_selector.smoothed.next_step(elapsed_samples)
-            } else {
-                self.params.metric_dur_selector.value()
+                self.metric_duration = one_crotchet as f32 * self.metric_duration;
             };
             
-
             match event {
                 NoteEvent::NoteOn {..} => {
                     if let Some(event) = self.process_event(event) {
@@ -292,7 +307,13 @@ impl Plugin for MetreFiddler {
         }
         
         // update progress with samples left in buffer
-        self.progress_in_samples += buffer_len as u64 - current_sample as u64;
+        elapsed_samples = buffer_len as u32 - current_sample;
+        self.progress_in_samples += elapsed_samples as u64;
+        // update all parameters once again
+        self.params.velocity_min.smoothed.next_step(elapsed_samples);
+        self.params.velocity_max.smoothed.next_step(elapsed_samples);
+        self.params.lower_threshold.smoothed.next_step(elapsed_samples);
+        self.params.upper_threshold.smoothed.next_step(elapsed_samples);
         
         ProcessStatus::Normal
     }
