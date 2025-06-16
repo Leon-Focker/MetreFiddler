@@ -9,9 +9,11 @@ use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
 use crate::gui::param_slider_vertical::{ParamSliderExt, ParamSliderV};
 use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
+use crate::gui::param_label::{ParamLabel, };
 use crate::metre_data::parse_input;
 
 // TODO
+//  type in numbers with Alt+LeftClick
 const PLUGIN_INFO_TEXT: &str = "
      This is a lot of text that explains how this plugin works. 
      It goes into detail about the features, usage, and limitations...
@@ -61,7 +63,6 @@ impl Model for Data {
             }
             MetreFiddlerEvent::ToggleMetreInfo => {
                 self.display_metre_info = !self.display_metre_info;
-                println!("hey! you clicked a button!")
             }
             MetreFiddlerEvent::TriggerPhaseReset => {
                 self.params.reset_info.store(true, SeqCst);
@@ -192,10 +193,21 @@ fn upper_part(cx: &mut Context) {
                 .child_bottom(Pixels(0.0))
                 .top(Stretch(0.1));
 
-            Label::new(cx, "Duration")
+            // Label that changes according to Parameter
+            ParamLabel::new(
+                cx,
+                Data::params,
+                |params| &params.use_bpm,
+                |param| {
+                    if param < 0.5 {
+                        String::from("Duration in Seconds")
+                    } else {
+                        String::from("Duration in Quarter Notes")
+                    }
+                },
+            )
                 .font_weight(FontWeightKeyword::Bold)
                 .top(Stretch(1.5));
-            // TODO This slider should display a more useful value
             ParamSlider::new(cx, Data::params, |params|
                 &params.metric_dur_selector)
                 .width(Pixels(200.0))
@@ -203,9 +215,9 @@ fn upper_part(cx: &mut Context) {
 
             HStack::new(cx, |cx| {
                 // BPM Toggle
-                // TODO maybe swap labels according to Param?
                 ParamButton::new(cx, Data::params, |params|
-                    &params.bpm_toggle)
+                    &params.use_bpm)
+                    .with_label("  Use BPM")
                     .width(Pixels(100.0));
                 // Reset Phase
                 Button::new(
@@ -279,6 +291,7 @@ fn lower_part(cx: &mut Context) {
        
         // Metre Input
         // TODO Make this work in windows and getting the right keys would be nice as well. 
+        //  can i get space with cx.modifiers().alt()  ?
         Textbox::new(cx, Data::text_input)
             .on_submit(|cx, text, _| {
                 cx.emit(MetreFiddlerEvent::UpdateString(text));
