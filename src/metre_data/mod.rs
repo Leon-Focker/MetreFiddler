@@ -24,7 +24,7 @@ impl Default for MetreData {
 
 pub fn parse_input(text: &str) -> Result<MetreData, String> {
     let rqq = parse_rqq(text)?;
-    let durations = rqq.to_durations(1.0);
+    let durations = rqq.to_durations(1.0)?;
     let sum: f32 = durations.iter().sum();
     let durations = durations.iter().map(|x| x / sum).collect::<Vec<f32>>();
     let value = rqq_to_indispensability_list(rqq)?;

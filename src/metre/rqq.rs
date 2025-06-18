@@ -109,29 +109,37 @@ impl RQQ {
         }
         result
     }
-    
-    pub fn to_durations(&self, parent_dur: f32) -> Vec<f32> {
+
+    pub fn to_durations(&self, parent_dur: f32) -> Result<Vec<f32>, String> {
         match self {
-            Elem(val) => vec![*val / parent_dur],
+            Elem(val) => Ok(vec![*val / parent_dur]),
             List(vec) => {
+                if vec.len() < 2 {
+                    return Err("List must have at least two elements".to_string());
+                }
+
                 let second_divs = &vec[1];
                 let second_divs_vec = match second_divs {
                     List(v) => v,
-                    _ => &vec![second_divs.clone()],
+                    _ => return Err("Expected a List for subdivisions".to_string()),
                 };
+
                 let rqqnd = second_divs.rqq_num_divisions();
                 let this_dur = match &vec[0] {
                     Elem(val) => *val,
-                    _ => 1.0,
+                    _ => return Err("Expected Elem as first item in List".to_string()),
                 };
+
                 let pd = (parent_dur * rqqnd) / this_dur;
-                second_divs_vec.iter()
-                    .flat_map(|div| div.to_durations(pd))
-                    .collect()
+
+                let mut result = Vec::new();
+                for div in second_divs_vec {
+                    result.extend(div.to_durations(pd)?);
+                }
+                Ok(result)
             }
         }
     }
-
 }
 
 pub fn parse_rqq(input: &str) ->  Result<RQQ, String> {
