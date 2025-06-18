@@ -12,12 +12,22 @@ use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
 use crate::gui::param_label::{ParamLabel, };
 use crate::metre_data::parse_input;
 
-// TODO
-//  type in numbers with Alt+LeftClick
 const PLUGIN_INFO_TEXT: &str = "
-     This is a lot of text that explains how this plugin works. 
-     It goes into detail about the features, usage, and limitations...
-";
+     Below you can define a metric structure using RQQ notation, i.e. hierarchical 
+     lists of proportions. Each list begins with a total duration, followed by a 
+     sub-list of relative durations. These define the relative length of each beat 
+     in a bar. Each relative duration can be replaced by another RQQ list.
+
+     The calculation of each beats weight is inspired by Clarance Barlows 
+     indispensability function.
+   
+     The subdivision into of these nested lists defines the metric hierarchy 
+     (metric groupings). Instead of a Space, you could also use ',' to separate
+     elements. The following examples describe a bar in 6/8 compared to 3/4:
+
+     (6  ((3 (1 1 1))  (3 (1 1 1))))
+     (6  ((2 (1 1))  (2 (1 1))  (2 (1 1))))
+ ";
 
 
 #[derive(Lens)]
@@ -133,7 +143,8 @@ pub(crate) fn create(
                     if display.get(cx) {
                         Element::new(cx)
                             .text(PLUGIN_INFO_TEXT)
-                            .background_color(Color::white())
+                            .font_size(13.0)
+                            .background_color(RGBA::rgba(250, 250, 250, 255))
                             .opacity(1.0);
                     }
                 })                
@@ -290,8 +301,7 @@ fn lower_part(cx: &mut Context) {
             .child_space(Stretch(1.0));
        
         // Metre Input
-        // TODO Make this work in windows and getting the right keys would be nice as well. 
-        //  can i get space with cx.modifiers().alt()  ?
+        // TODO Make this work in FL studio
         Textbox::new(cx, Data::text_input)
             .on_submit(|cx, text, _| {
                 cx.emit(MetreFiddlerEvent::UpdateString(text));
