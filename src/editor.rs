@@ -1,7 +1,7 @@
 use nih_plug::prelude::{Editor};
-use nih_plug_vizia::vizia::prelude::*;
-use nih_plug_vizia::widgets::*;
-use nih_plug_vizia::{assets, create_vizia_editor, ViziaState, ViziaTheming};
+use vizia_plug::vizia::prelude::*;
+use vizia_plug::widgets::*;
+use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
 use std::sync::Arc;
 use std::sync::atomic::Ordering::SeqCst;
 use nih_plug::nih_log;
@@ -12,8 +12,9 @@ use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
 use crate::gui::param_label::{ParamLabel, };
 use crate::metre_data::parse_input;
 
-const PLUGIN_INFO_TEXT: &str = "
-     Below you can define a metric structure using RQQ notation, i.e. hierarchical 
+pub const NOTO_SANS: &str = "Noto Sans";
+
+const PLUGIN_INFO_TEXT: &str = "     Below you can define a metric structure using RQQ notation, i.e. hierarchical
      lists of proportions. Each list begins with a total duration, followed by a 
      sub-list of relative durations. These define the relative length of each beat 
      in a bar. Each relative duration can be replaced by another RQQ list.
@@ -37,6 +38,7 @@ struct Data {
     last_input_is_valid: bool,
     max_threshold: usize,
     display_metre_info: bool,
+    display_duration: bool,
     check_for_phase_reset_toggle: bool,
 }
 
@@ -44,6 +46,7 @@ struct Data {
 pub enum MetreFiddlerEvent {
     UpdateString(String),
     ToggleMetreInfo,
+    ToggleDurationDisplay,
     TriggerPhaseReset,
     RevertPhaseReset,
     ToggleCheckForPhaseReset,
@@ -73,6 +76,9 @@ impl Model for Data {
             }
             MetreFiddlerEvent::ToggleMetreInfo => {
                 self.display_metre_info = !self.display_metre_info;
+            }
+            MetreFiddlerEvent::ToggleDurationDisplay => {
+                self.display_duration = !self.display_duration;
             }
             MetreFiddlerEvent::TriggerPhaseReset => {
                 self.params.reset_info.store(true, SeqCst);
@@ -112,8 +118,6 @@ pub(crate) fn create(
     editor_state: Arc<ViziaState>,
 ) -> Option<Box<dyn Editor>> {
     create_vizia_editor(editor_state, ViziaTheming::Custom, move |cx, _| {
-        assets::register_noto_sans_light(cx);
-        assets::register_noto_sans_thin(cx);
 
         let metre_data = params.metre_data.lock().unwrap();
 
@@ -123,6 +127,7 @@ pub(crate) fn create(
             last_input_is_valid: true,
             max_threshold: metre_data.max.clone(),
             display_metre_info: false,
+            display_duration: true,
             check_for_phase_reset_toggle: false,
         }
             .build(cx);
@@ -138,25 +143,29 @@ pub(crate) fn create(
                 // The upper part of the Plugin
                 upper_part(cx);
                 
-                //Information text displayed over plugin
+                // Information text displayed over plugin
                 Binding::new(cx, Data::display_metre_info, |cx, display| {
                     if display.get(cx) {
                         Element::new(cx)
-                            .text(PLUGIN_INFO_TEXT)
-                            .font_size(13.0)
                             .background_color(RGBA::rgba(250, 250, 250, 255))
                             .opacity(1.0);
+                        Label::new(cx, "")
+                            .text(PLUGIN_INFO_TEXT)
+                            .top(Pixels(5.0))
+                            .font_size(13.0);
                     }
-                })                
+                })
             })
                 .height(Stretch(5.0));
             
             // Lower Part of the Plugin
             lower_part(cx);
         })
-            .row_between(Pixels(0.0)) ;// Space between elements in column
+            // I have no clue, why I have to hardcode this? But without this, the HStacks are
+            // not stretched properly
+          .width(Pixels(500.0));
 
-        ResizeHandle::new(cx);
+        //  ResizeHandle::new(cx);
     })
 }
 
@@ -172,7 +181,9 @@ fn upper_part(cx: &mut Context) {
                         &params.velocity_min)
                         .set_style(Scaled {factor: 1});
                     Label::new(cx, "min");
-                });
+                })
+                    .padding_top(Pixels(20.0))
+                    .alignment(Alignment::Center);
                 // max vel
                 VStack::new(cx, |cx| {
                     ParamSliderV::new(cx, Data::params, |params|
@@ -180,71 +191,44 @@ fn upper_part(cx: &mut Context) {
                         .set_style(Scaled {factor: 1});
                     Label::new(cx, "max");
                 })
-                    .left(Pixels(15.0));
-            })
-                .child_left(Stretch(1.0))
-                .child_right(Stretch(1.0))
-                .child_top(Stretch(0.1));
+                    .padding_top(Pixels(20.0))
+                    .alignment(Alignment::Left);
+                // Skew
+                VStack::new(cx, |cx| {
+                    ParamSliderV::new(cx, Data::params, |params|
+                        &params.velocity_skew)
+                        .set_style(Scaled {factor: 1})
+                        .width(Pixels(10.0));
+                    Label::new(cx, "skew");
+                })
+                    .padding_top(Pixels(20.0))
+                    .alignment(Alignment::Left);
+            });
 
             Label::new(cx, "Velocity")
                 .font_weight(FontWeightKeyword::Bold)
-                .left(Stretch(1.0))
-                .right(Stretch(1.0))
-                .child_bottom(Pixels(10.0));
+                .padding_bottom(Pixels(20.0));
         })
+            .alignment(Alignment::Center)
             .width(Stretch(1.0));
 
         // Middle Part (Name, Duration, Buttons)
         VStack::new(cx, |cx| {
+            Element::new(cx)
+                .height(Pixels(25.0));
             Label::new(cx, "MetreFiddler")
-                .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                .font_family(vec![FamilyOwned::Named(String::from(NOTO_SANS))])
                 .font_weight(FontWeightKeyword::Thin)
                 .font_size(40.0)
-                .height(Pixels(50.0))
-                .child_bottom(Pixels(0.0))
-                .top(Stretch(0.1));
+                .height(Pixels(50.0));
 
-            // Label that changes according to Parameter
-            ParamLabel::new(
-                cx,
-                Data::params,
-                |params| &params.use_bpm,
-                |param| {
-                    if param < 0.5 {
-                        String::from("Duration in Seconds")
-                    } else {
-                        String::from("Duration in Quarter Notes")
-                    }
-                },
-            )
-                .font_weight(FontWeightKeyword::Bold)
-                .top(Stretch(1.5));
-            ParamSlider::new(cx, Data::params, |params|
-                &params.metric_dur_selector)
-                .width(Pixels(200.0))
-                .bottom(Pixels(0.0));
+            duration_position(cx);
 
-            HStack::new(cx, |cx| {
-                // BPM Toggle
-                ParamButton::new(cx, Data::params, |params|
-                    &params.use_bpm)
-                    .with_label("  Use BPM")
-                    .width(Pixels(100.0));
-                // Reset Phase
-                Button::new(
-                    cx,
-                    |cx| {
-                        cx.emit(MetreFiddlerEvent::TriggerPhaseReset);
-                    },
-                    |cx| Label::new(cx, "reset phase"))
-                    .width(Pixels(100.0));
-            })
-                .top(Pixels(10.0))
-                .child_space(Stretch(1.0));
+            Element::new(cx)
+                .height(Pixels(10.0));
         })
-            .top(Stretch(0.2))
-            .width(Stretch(2.0))
-            .child_space(Stretch(1.0));
+            .alignment(Alignment::Center)
+            .width(Stretch(2.0));
 
         // The Threshold Sliders
         VStack::new(cx, |cx| {
@@ -257,7 +241,9 @@ fn upper_part(cx: &mut Context) {
                             &params.lower_threshold)
                             .set_style(Scaled {factor: max_val});
                         Label::new(cx, "min");
-                    });
+                    })
+                        .padding_top(Pixels(20.0))
+                        .alignment(Alignment::Right);
 
                     VStack::new(cx, |cx| {
                         ParamSliderV::new(cx, Data::params, |params|
@@ -265,23 +251,107 @@ fn upper_part(cx: &mut Context) {
                             .set_style(Scaled { factor: max_val });
                         Label::new(cx, "max");
                     })
-                        .left(Pixels(15.0));
-                }); 
-            })
-                .child_left(Stretch(1.0))
-                .child_right(Stretch(1.0))
-                .child_top(Stretch(0.1));
+                        .padding_top(Pixels(20.0))
+                        .alignment(Alignment::Center);
+                });
+            });
             
             Label::new(cx, "Threshold")
                 .font_weight(FontWeightKeyword::Bold)
-                .left(Stretch(1.0))
-                .right(Stretch(1.0))
-                .child_bottom(Pixels(10.0));
+                .padding_bottom(Pixels(20.0));
         })
+            .alignment(Alignment::Center)
             .width(Stretch(1.0));
+    });
+}
+
+fn duration_position(cx: &mut Context) {
+    VStack::new(cx, |cx| {
+
+        // Duration
+        ZStack::new(cx, |cx| {
+            // Label that changes according to Parameter
+            VStack::new(cx, |cx| {
+                ParamLabel::new(
+                    cx,
+                    Data::params,
+                    |params| &params.use_bpm,
+                    |param| {
+                        if param < 0.5 {
+                            String::from("Duration in Seconds")
+                        } else {
+                            String::from("Duration in Quarter Notes")
+                        }
+                    },
+                )
+                    .alignment(Alignment::BottomCenter)
+                    .font_weight(FontWeightKeyword::Bold);
+
+                ParamSlider::new(cx, Data::params, |params|
+                    &params.metric_dur_selector)
+                    .width(Pixels(200.0));
+
+                HStack::new(cx, |cx| {
+                    // BPM Toggle
+                    ParamButton::new(cx, Data::params, |params|
+                        &params.use_bpm)
+                        .with_label("  Use BPM")
+                        .width(Pixels(100.0));
+                    // Reset Phase
+                    Button::new(
+                        cx,
+                        |cx| Label::new(cx, "reset phase"))
+                        .on_press(|cx| {
+                            cx.emit(MetreFiddlerEvent::TriggerPhaseReset);
+                        })
+                        .width(Pixels(100.0));
+                })
+                    .alignment(Alignment::Center)
+                    .top(Pixels(10.0));
+            })
+                .alignment(Alignment::TopCenter);
+
+            Binding::new(cx, Data::display_duration, |cx, display| {
+                if !display.get(cx) {
+                    Element::new(cx)
+                        .background_color(RGBA::rgba(250, 250, 250, 255))
+                        .opacity(1.0);
+                }
+            });
+        })
+            .height(Stretch(0.4))
+            .alignment(Alignment::Center);
+
+        // Position
+        VStack::new(cx, |cx| {
+            HStack::new(cx, |cx| {
+                // Switch between Duration and Position
+                ParamButton::new(cx, Data::params, |params|
+                    &params.use_position)
+                    .on_press(|cx| {
+                        cx.emit(MetreFiddlerEvent::ToggleDurationDisplay)
+                    })
+                    .with_label("Use")
+                    .height(Pixels(20.0))
+                    .width(Pixels(40.0));
+                
+                Label::new(
+                    cx,
+                    "  Position within Measure"
+                )
+                    .font_weight(FontWeightKeyword::Bold);
+            })
+                .alignment(Alignment::Center);
+            
+            ParamSlider::new(cx, Data::params, |params|
+                &params.bar_position)
+                .width(Pixels(200.0))
+                .height(Pixels(10.0));
+        })
+            .alignment(Alignment::TopCenter)
+            .height(Stretch(0.2));
     })
-        .child_left(Pixels(0.0))
-        .child_right(Pixels(0.0));
+        .alignment(Alignment::Center);
 }
 
 // Lower Part of the Plugin, containing the Metre Definition
@@ -290,18 +360,15 @@ fn lower_part(cx: &mut Context) {
         // Info Button
         VStack::new(cx, |cx| {
             Button::new(cx,
-                        |cx| { cx.emit(MetreFiddlerEvent::ToggleMetreInfo); },
                         |cx| Label::new(cx, "info"))
-                .right(Pixels(10.0));     
-        })
-            .top(Pixels(0.0))
-            .bottom(Pixels(0.0))
-            .left(Pixels(0.0))
-            .right(Pixels(0.0))
-            .child_space(Stretch(1.0));
+                .on_press(|cx| {
+                    cx.emit(MetreFiddlerEvent::ToggleMetreInfo)
+                })
+                .position_type(PositionType::Absolute)
+                .right(Pixels(10.0));
+        });
        
         // Metre Input
-        // TODO Make this work in FL studio
         Textbox::new(cx, Data::text_input)
             .on_submit(|cx, text, _| {
                 cx.emit(MetreFiddlerEvent::UpdateString(text));
@@ -313,15 +380,10 @@ fn lower_part(cx: &mut Context) {
             Binding::new(cx, Data::last_input_is_valid, |cx, is_valid|{
                 let is_valid = is_valid.get(cx);
                 Label::new(cx, if is_valid { "✔️" } else { "❌" })
+                    .position_type(PositionType::Absolute)
+                    .top(Pixels(5.0))
                     .left(Pixels(10.0));
             }); 
-        })
-            .top(Pixels(0.0))
-            .bottom(Pixels(0.0))
-            .left(Pixels(0.0))
-            .right(Pixels(0.0))
-            .child_space(Stretch(1.0));
-    })
-        //.height(Stretch(1.0))
-        .child_space(Stretch(1.0));
+        });
+    });
 }

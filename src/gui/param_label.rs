@@ -1,6 +1,6 @@
 use nih_plug::prelude::Param;
-use nih_plug_vizia::vizia::prelude::*;
-use nih_plug_vizia::widgets::param_base::ParamWidgetBase;
+use vizia_plug::vizia::prelude::*;
+use vizia_plug::widgets::param_base::ParamWidgetBase;
 
 // TODO
 /// A toggleable button that integrates with NIH-plug's [`Param`] types. Only makes sense with

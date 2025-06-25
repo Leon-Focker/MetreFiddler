@@ -1,5 +1,5 @@
 use nih_plug::prelude::*;
-use nih_plug_vizia::ViziaState;
+use vizia_plug::ViziaState;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::SeqCst;
@@ -42,19 +42,23 @@ struct MetreFiddlerParams {
     pub velocity_min: FloatParam,
     #[id = "velocity_max"]
     pub velocity_max: FloatParam,
-
+    
+    #[id = "velocity_skew"]
+    pub velocity_skew: FloatParam,
+    
     #[id = "lower_threshold"]
     pub lower_threshold: FloatParam,
     #[id = "upper_threshold"]
     pub upper_threshold: FloatParam,
 
+    #[id = "bar_position"]
+    pub bar_position: FloatParam,
     #[id = "reset_phase"]
     pub reset_phase: BoolParam,
     
-    // TODO it would be great to have a parameter representing the normalized duration in a bar, 
-    //   so that this can be accurately set by the DAW. 
+    #[id = "use_position"]
+    pub use_position: BoolParam,
     
-    // TODO skew for velocity_curve
     
     pub reset_info: Arc<AtomicBool>,
 
@@ -116,6 +120,13 @@ impl Default for MetreFiddlerParams {
                 FloatRange::Linear { min: 0.0, max: 127.0 },
             )
                 .with_smoother(Linear(50.0)),
+            
+            velocity_skew: FloatParam::new(
+                "Skew value for Velocity Range",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            )
+                .with_smoother(Linear(50.0)),
 
             lower_threshold: FloatParam::new(
                 "Lower Threshold for the Midi output",
@@ -136,11 +147,24 @@ impl Default for MetreFiddlerParams {
                 false
             ),
             
+            bar_position: FloatParam::new(
+                "The current position within a bar",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0},
+            )
+                .with_smoother(Linear(50.0)),
+            
+            use_position: BoolParam::new(
+              "Use and automate the Position within the Bar, instead of the Duration for the bar",
+              false
+            ),
+            
             reset_info: Arc::new(AtomicBool::new(false)),
         }
     }
 }
 
+// TODO Logic for velocity skew and bar_position
 impl MetreFiddler {
     fn process_event<S: SysExMessage>(&mut self, event: NoteEvent<S>) -> Option<NoteEvent<S>> {
         let metric_data = &self.params.metre_data.lock().unwrap();

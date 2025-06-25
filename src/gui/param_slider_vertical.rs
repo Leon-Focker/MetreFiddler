@@ -1,9 +1,9 @@
 // This is a modified copy of nih-plugs param_slider.rs
 // ! A slider that integrates with NIH-plug's [`Param`] types.
 use nih_plug::prelude::Param;
-use nih_plug_vizia::vizia::prelude::*;
-use nih_plug_vizia::widgets::param_base::ParamWidgetBase;
-use nih_plug_vizia::widgets::util::{self, ModifiersExt};
+use vizia_plug::vizia::prelude::*;
+use vizia_plug::widgets::param_base::ParamWidgetBase;
+use vizia_plug::widgets::util::{self, ModifiersExt};
 
 
 /// When shift+dragging a parameter, one pixel dragged corresponds to this much change in the
@@ -213,10 +213,12 @@ impl ParamSliderV {
             })
             // `.child_space(Stretch(1.0))` no longer works
             .class("align_center")
-            .child_top(Stretch(1.0))
-            .child_bottom(Stretch(1.0))
-            .height(Stretch(1.0))
-            .width(Stretch(1.0));
+            // TODO
+            // .padding_top(Stretch(1.0))
+            // .padding_bottom(Stretch(1.0))
+            // .height(Stretch(1.0))
+            // .width(Stretch(1.0))
+        ;
     }
 
     /// Create the fill part of the slider.
@@ -288,7 +290,8 @@ impl ParamSliderV {
                         Label::new(cx, preview_lens)
                             .class("value")
                             .class("value--multiple")
-                            .child_space(Stretch(1.0))
+                            // TODO
+                            // .child_space(Stretch(1.0))
                             .height(Stretch(1.0))
                             .width(Stretch(1.0))
                             .hoverable(false);
@@ -320,7 +323,7 @@ impl ParamSliderV {
                     }
                         .class("value")
                         .class("value--single")
-                        .child_space(Stretch(1.0))
+                        // TODO .child_space(Stretch(1.0))
                         .height(Stretch(1.0))
                         .width(Stretch(1.0))
                         .hoverable(false);
@@ -500,7 +503,7 @@ impl View for ParamSliderV {
                     self.param_base.begin_set_parameter(cx);
                     if cx.modifiers().shift() {
                         self.granular_drag_status = Some(GranularDragStatus {
-                            starting_y_coordinate: cx.mouse().cursory,
+                            starting_y_coordinate: cx.mouse().cursor_y,
                             starting_value: self.param_base.unmodulated_normalized_value(),
                         });
                     } else {
@@ -508,7 +511,7 @@ impl View for ParamSliderV {
                         self.set_normalized_value_drag(
                             cx,
                             // TODO set to 1.0 - ... to invert slider:
-                            1.0 - util::remap_current_entity_y_coordinate(cx, cx.mouse().cursory),
+                            1.0 - util::remap_current_entity_y_coordinate(cx, cx.mouse().cursor_y),
                         );
                     }
                 }
@@ -582,7 +585,7 @@ impl View for ParamSliderV {
                     self.granular_drag_status = None;
                     self.param_base.set_normalized_value(
                         cx,
-                        util::remap_current_entity_y_coordinate(cx, cx.mouse().cursory),
+                        util::remap_current_entity_y_coordinate(cx, cx.mouse().cursor_y),
                     );
                 }
             }
