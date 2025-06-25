@@ -42,10 +42,10 @@ struct MetreFiddlerParams {
     pub velocity_min: FloatParam,
     #[id = "velocity_max"]
     pub velocity_max: FloatParam,
-    
+
     #[id = "velocity_skew"]
     pub velocity_skew: FloatParam,
-    
+
     #[id = "lower_threshold"]
     pub lower_threshold: FloatParam,
     #[id = "upper_threshold"]
@@ -55,10 +55,10 @@ struct MetreFiddlerParams {
     pub bar_position: FloatParam,
     #[id = "reset_phase"]
     pub reset_phase: BoolParam,
-    
+
     #[id = "use_position"]
     pub use_position: BoolParam,
-    
+
     
     pub reset_info: Arc<AtomicBool>,
 
@@ -120,7 +120,7 @@ impl Default for MetreFiddlerParams {
                 FloatRange::Linear { min: 0.0, max: 127.0 },
             )
                 .with_smoother(Linear(50.0)),
-            
+
             velocity_skew: FloatParam::new(
                 "Skew value for Velocity Range",
                 0.5,
@@ -146,14 +146,14 @@ impl Default for MetreFiddlerParams {
                 "Reset metric phasse",
                 false
             ),
-            
+
             bar_position: FloatParam::new(
                 "The current position within a bar",
                 0.0,
                 FloatRange::Linear { min: 0.0, max: 1.0},
             )
                 .with_smoother(Linear(50.0)),
-            
+
             use_position: BoolParam::new(
               "Use and automate the Position within the Bar, instead of the Duration for the bar",
               false
@@ -174,7 +174,14 @@ impl MetreFiddler {
         
         // time in seconds
         let time = self.progress_in_samples as f32 / self.sample_rate;
-        let time_in_bar_normalized = time.rem_euclid(self.metric_duration) / self.metric_duration;
+        let time_in_bar_normalized = if self.params.use_position.value() {
+            // TODO smoothed
+            self.params.bar_position.value()
+        } else {
+            let pos = time.rem_euclid(self.metric_duration) / self.metric_duration;
+            // TODO set bar_position
+            pos
+        };
         
         // calculate the indispensability value
         let indisp_idx: usize = if let Ok(idx) = decider(time_in_bar_normalized, &metric_durations) {

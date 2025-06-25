@@ -213,12 +213,9 @@ impl ParamSliderV {
             })
             // `.child_space(Stretch(1.0))` no longer works
             .class("align_center")
-            // TODO
-            // .padding_top(Stretch(1.0))
-            // .padding_bottom(Stretch(1.0))
-            // .height(Stretch(1.0))
-            // .width(Stretch(1.0))
-        ;
+            .alignment(Alignment::Left)
+            .height(Stretch(1.0))
+            .width(Stretch(1.0));
     }
 
     /// Create the fill part of the slider.
@@ -231,6 +228,7 @@ impl ParamSliderV {
         // the current style property. See [`ParamSliderStyle`].
         Element::new(cx)
             .class("fill")
+            .background_color(RGBA::rgb(196, 196, 196))
             .width(Stretch(1.0))
             // TODO slider starts from bottom, not top:
             .top(fill_start_delta_lens.map(|(_start_t, delta)| Percentage((1.0 - delta) * 100.0)))
@@ -290,10 +288,8 @@ impl ParamSliderV {
                         Label::new(cx, preview_lens)
                             .class("value")
                             .class("value--multiple")
-                            // TODO
-                            // .child_space(Stretch(1.0))
-                            .height(Stretch(1.0))
-                            .width(Stretch(1.0))
+                            .alignment(Alignment::Center)
+                            .size(Stretch(1.0))
                             .hoverable(false);
                     }
                 })
@@ -323,9 +319,8 @@ impl ParamSliderV {
                     }
                         .class("value")
                         .class("value--single")
-                        // TODO .child_space(Stretch(1.0))
-                        .height(Stretch(1.0))
-                        .width(Stretch(1.0))
+                        .alignment(Alignment::Center)
+                        .size(Stretch(1.0))
                         .hoverable(false);
                 });
             }
@@ -558,7 +553,7 @@ impl View for ParamSliderV {
                         // These positions should be compensated for the DPI scale so it remains
                         // consistent
                         let start_y =
-                            util::remap_current_entity_x_t(cx, granular_drag_status.starting_value);
+                            util::remap_current_entity_y_t(cx, granular_drag_status.starting_value);
                         let delta_y = ((*y - granular_drag_status.starting_y_coordinate)
                             * GRANULAR_DRAG_MULTIPLIER)
                             * cx.scale_factor();
@@ -633,7 +628,7 @@ impl View for ParamSliderV {
 }
 
 /// Extension methods for [`ParamSliderV`] handles.
-pub trait ParamSliderExt {
+pub trait ParamSliderVExt {
     /// Don't respond to scroll wheel events. Useful when this slider is used as part of a scrolling
     /// view.
     fn disable_scroll_wheel(self) -> Self;
@@ -646,7 +641,7 @@ pub trait ParamSliderExt {
     fn with_label(self, value: impl Into<String>) -> Self;
 }
 
-impl ParamSliderExt for Handle<'_, ParamSliderV> {
+impl ParamSliderVExt for Handle<'_, ParamSliderV> {
     fn disable_scroll_wheel(self) -> Self {
         self.modify(|param_slider: &mut ParamSliderV| param_slider.use_scroll_wheel = false)
     }

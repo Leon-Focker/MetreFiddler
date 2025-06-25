@@ -7,9 +7,10 @@ use std::sync::atomic::Ordering::SeqCst;
 use nih_plug::nih_log;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
-use crate::gui::param_slider_vertical::{ParamSliderExt, ParamSliderV};
+use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
 use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
 use crate::gui::param_label::{ParamLabel, };
+use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
 use crate::metre_data::parse_input;
 
 pub const NOTO_SANS: &str = "Noto Sans";
@@ -194,11 +195,19 @@ fn upper_part(cx: &mut Context) {
                     .padding_top(Pixels(20.0))
                     .alignment(Alignment::Left);
                 // Skew
+                // TODO stops working after a while (when clicking next to it??)
                 VStack::new(cx, |cx| {
-                    ParamSliderV::new(cx, Data::params, |params|
+                    ParamSliderKnob::new(cx, Data::params, |params|
                         &params.velocity_skew)
-                        .set_style(Scaled {factor: 1})
-                        .width(Pixels(10.0));
+                        .set_vertical(true);
+                    // ParamLabel::new(
+                    //     cx,
+                    //     Data::params,
+                    //     |params| &params.velocity_skew,
+                    //     |param| {
+                    //         param.to_string()
+                    //     }
+                    // );
                     Label::new(cx, "skew");
                 })
                     .padding_top(Pixels(20.0))
@@ -334,7 +343,7 @@ fn duration_position(cx: &mut Context) {
                     .with_label("Use")
                     .height(Pixels(20.0))
                     .width(Pixels(40.0));
-                
+
                 Label::new(
                     cx,
                     "  Position within Measure"
@@ -343,10 +352,16 @@ fn duration_position(cx: &mut Context) {
             })
                 .alignment(Alignment::Center);
             
-            ParamSlider::new(cx, Data::params, |params|
+            // TODO would be great to have marks on this corresponding to the beats
+            ParamSliderKnob::new(cx, Data::params, |params|
                 &params.bar_position)
-                .width(Pixels(200.0))
-                .height(Pixels(10.0));
+                .height(Pixels(20.0))
+                .width(Pixels(200.0));
+            
+            // ParamSlider::new(cx, Data::params, |params|
+            //     &params.bar_position)
+            //     .width(Pixels(200.0))
+            //     .height(Pixels(10.0));
         })
             .alignment(Alignment::TopCenter)
             .height(Stretch(0.2));
