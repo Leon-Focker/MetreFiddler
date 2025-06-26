@@ -16,9 +16,6 @@ const GRANULAR_DRAG_MULTIPLIER: f32 = 0.1;
 pub struct ParamSliderKnob {
     param_base: ParamWidgetBase,
 
-    /// Will be set to `true` when the field gets Alt+Click'ed which will replace the label with a
-    /// text box.
-    text_input_active: bool,
     /// Will be set to `true` if we're dragging the parameter. Resetting the parameter or entering a
     /// text value should not initiate a drag.
     drag_active: bool,
@@ -72,8 +69,7 @@ impl ParamSliderKnob {
         // this approach looks a bit jarring.
         Self {
             param_base: ParamWidgetBase::new(cx, params, params_to_param),
-
-            text_input_active: false,
+            
             drag_active: false,
             granular_drag_status: None,
 
@@ -257,18 +253,14 @@ impl View for ParamSliderKnob {
             // still won't work.
             WindowEvent::MouseDown(MouseButton::Left)
             | WindowEvent::MouseTripleClick(MouseButton::Left) => {
-                if cx.modifiers().alt() {
-                    // ALt+Click brings up a text entry dialog
-                    self.text_input_active = true;
-                    cx.set_active(true);
-                } else if cx.modifiers().command() {
+                if cx.modifiers().command() {
                     // Ctrl+Click, double click, and right clicks should reset the parameter instead
                     // of initiating a drag operation
                     self.param_base.begin_set_parameter(cx);
                     self.param_base
                         .set_normalized_value(cx, self.param_base.default_normalized_value());
                     self.param_base.end_set_parameter(cx);
-                } else if !self.text_input_active {
+                } else {
                     // The `!self.text_input_active` check shouldn't be needed, but the textbox does
                     // not consume the mouse down event. So clicking on the textbox to move the
                     // cursor would also change the slider.

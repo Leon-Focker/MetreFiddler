@@ -13,6 +13,9 @@ use crate::gui::param_label::{ParamLabel, };
 use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
 use crate::metre_data::parse_input;
 
+// TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and
+//  sometimes it doesn't.
+
 pub const NOTO_SANS: &str = "Noto Sans";
 
 const PLUGIN_INFO_TEXT: &str = "     Below you can define a metric structure using RQQ notation, i.e. hierarchical
@@ -195,7 +198,6 @@ fn upper_part(cx: &mut Context) {
                     .padding_top(Pixels(20.0))
                     .alignment(Alignment::Left);
                 // Skew
-                // TODO stops working after a while (when clicking next to it??)
                 VStack::new(cx, |cx| {
                     ParamSliderKnob::new(cx, Data::params, |params|
                         &params.velocity_skew)
