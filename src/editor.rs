@@ -34,16 +34,22 @@ const PLUGIN_INFO_TEXT: &str = "     Below you can define a metric structure usi
      (6  ((2 (1 1))  (2 (1 1))  (2 (1 1))))
  ";
 
+const NEW_STYLE: &str = r#"
+    .red_button:checked {
+        background-color: #ac3535;
+    }
+"#;
 
-#[derive(Lens)]
-struct Data {
-    params: Arc<MetreFiddlerParams>,
-    text_input: String,
-    last_input_is_valid: bool,
-    max_threshold: usize,
-    display_metre_info: bool,
-    display_duration: bool,
-    check_for_phase_reset_toggle: bool,
+#[derive(Lens, Clone)]
+pub(crate) struct Data {
+    pub(crate) params: Arc<MetreFiddlerParams>,
+    pub(crate) text_input: String,
+    pub(crate) last_input_is_valid: bool,
+    pub(crate) max_threshold: usize,
+    pub(crate) display_metre_info: bool,
+    pub(crate) display_duration: bool,
+    pub(crate) displayed_position: f32,
+    pub(crate) check_for_phase_reset_toggle: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -118,28 +124,23 @@ pub(crate) fn default_state() -> Arc<ViziaState> {
 }
 
 pub(crate) fn create(
-    params: Arc<MetreFiddlerParams>,
     editor_state: Arc<ViziaState>,
+    editor_data: Data
 ) -> Option<Box<dyn Editor>> {
     create_vizia_editor(editor_state, ViziaTheming::Custom, move |cx, _| {
+        // add new styling
+        let _ = cx.add_stylesheet(NEW_STYLE);
 
-        let metre_data = params.metre_data.lock().unwrap();
-
-        Data {
-            params: params.clone(),
-            text_input: metre_data.input.clone(),
-            last_input_is_valid: true,
-            max_threshold: metre_data.max.clone(),
-            display_metre_info: false,
-            display_duration: true,
-            check_for_phase_reset_toggle: false,
-        }
-            .build(cx);
+        editor_data.clone().build(cx);
 
         // This is a kinda hacky way to get the button and BoolParm to reset itself, but keeping
         // DAW Automation possible...
         Binding::new(cx, Data::check_for_phase_reset_toggle, |cx, _was_reset| {
             cx.emit(MetreFiddlerEvent::ToggleCheckForPhaseReset);
+        });
+        
+        Binding::new(cx, Data::displayed_position, |cx, _| {
+            
         });
         
         VStack::new(cx, |cx| {
@@ -342,6 +343,7 @@ fn duration_position(cx: &mut Context) {
                     .on_press(|cx| {
                         cx.emit(MetreFiddlerEvent::ToggleDurationDisplay)
                     })
+                    .class("red_button")
                     .with_label("Use")
                     .height(Pixels(20.0))
                     .width(Pixels(40.0));
@@ -359,11 +361,6 @@ fn duration_position(cx: &mut Context) {
                 &params.bar_position)
                 .height(Pixels(20.0))
                 .width(Pixels(200.0));
-            
-            // ParamSlider::new(cx, Data::params, |params|
-            //     &params.bar_position)
-            //     .width(Pixels(200.0))
-            //     .height(Pixels(10.0));
         })
             .alignment(Alignment::TopCenter)
             .height(Stretch(0.2));

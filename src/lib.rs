@@ -21,6 +21,7 @@ struct MetreFiddler {
     progress_in_samples: u64,
     vel_min: f32,
     vel_max: f32,
+    vel_skew: f32,
     lower_threshold: f32,
     upper_threshold: f32,
 }
@@ -53,12 +54,13 @@ struct MetreFiddlerParams {
 
     #[id = "bar_position"]
     pub bar_position: FloatParam,
-    #[id = "reset_phase"]
-    pub reset_phase: BoolParam,
-
     #[id = "use_position"]
     pub use_position: BoolParam,
-
+    // This holds the value that is displayed when use_position is false
+    pub displayed_position: Arc<AtomicF32>,
+    
+    #[id = "reset_phase"]
+    pub reset_phase: BoolParam,
     
     pub reset_info: Arc<AtomicBool>,
 
@@ -80,6 +82,7 @@ impl Default for MetreFiddler {
             progress_in_samples: 0,
             vel_min: 0.0,
             vel_max: 1.0,
+            vel_skew: 0.5,
             lower_threshold: 0.0,
             upper_threshold: 1.0,
         }
@@ -159,12 +162,14 @@ impl Default for MetreFiddlerParams {
               false
             ),
             
+            displayed_position: Arc::new(AtomicF32::new(0.0)),
+            
             reset_info: Arc::new(AtomicBool::new(false)),
         }
     }
 }
 
-// TODO Logic for velocity skew and bar_position
+// TODO Logic for bar_position
 impl MetreFiddler {
     fn process_event<S: SysExMessage>(&mut self, event: NoteEvent<S>) -> Option<NoteEvent<S>> {
         let metric_data = &self.params.metre_data.lock().unwrap();
@@ -180,6 +185,8 @@ impl MetreFiddler {
         } else {
             let pos = time.rem_euclid(self.metric_duration) / self.metric_duration;
             // TODO set bar_position
+            self.params.displayed_position.store(pos, SeqCst);
+            //self.params.displayed_position.value.store(pos, SeqCst);
             pos
         };
         
@@ -188,13 +195,16 @@ impl MetreFiddler {
             idx as usize
         } else { 0 };
         let indisp_val = indisp_ls[indisp_idx];
-        // velocity in range 0 - 1, rescaled by vel_min and vel_max parameters
+        
         let v_min: f32 = self.vel_min.min(self.vel_max) / 127.0;
         let v_max: f32 = self.vel_max / 127.0;
+        // velocity in range 0 - 1, 
+        let normalized_vel = (1.0 / (indisp_val + 1) as f32).powf(2.0*(1.0 - self.vel_skew));
+        // rescaled by vel_min and vel_max parameters
         let vel: f32 = if v_min == v_max {
             v_min
         } else {
-            rescale(1.0 / (indisp_val + 1) as f32, 0.0, 1.0, v_min, v_max, true)
+            rescale(normalized_vel, 0.0, 1.0, v_min, v_max, true)
                 .unwrap_or(0.8)
         };
 
@@ -245,9 +255,20 @@ impl Plugin for MetreFiddler {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        let metre_data = self.params.metre_data.lock().unwrap();
+        
         editor::create(
-            self.params.clone(),
             self.params.editor_state.clone(),
+            editor::Data {
+                params: self.params.clone(),
+                text_input: metre_data.input.clone(),
+                last_input_is_valid: true,
+                max_threshold: metre_data.max.clone(),
+                display_metre_info: false,
+                display_duration: true,
+                displayed_position: self.params.displayed_position.load(SeqCst),
+                check_for_phase_reset_toggle: false,
+            },
         )
     }
 
@@ -300,12 +321,14 @@ impl Plugin for MetreFiddler {
             if elapsed_samples > 0 {
                 self.vel_min = self.params.velocity_min.smoothed.next_step(elapsed_samples);
                 self.vel_max = self.params.velocity_max.smoothed.next_step(elapsed_samples);
+                self.vel_skew = self.params.velocity_skew.smoothed.next_step(elapsed_samples);
                 self.lower_threshold = self.params.lower_threshold.smoothed.next_step(elapsed_samples);
                 self.upper_threshold = self.params.upper_threshold.smoothed.next_step(elapsed_samples);
                 self.metric_duration =  self.params.metric_dur_selector.smoothed.next_step(elapsed_samples)
             } else {
                 self.vel_min = self.params.velocity_min.value();
                 self.vel_max = self.params.velocity_max.value();
+                self.vel_skew = self.params.velocity_skew.value();
                 self.lower_threshold = self.params.lower_threshold.value();
                 self.upper_threshold = self.params.upper_threshold.value();
                 self.metric_duration =  self.params.metric_dur_selector.value();
