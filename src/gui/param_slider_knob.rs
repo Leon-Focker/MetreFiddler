@@ -118,13 +118,6 @@ impl ParamSliderKnob {
             .background_color(RGBA::rgba(250, 250, 250, 0))
             .width(Pixels(20.0))
             .height(Pixels(180.0))
-            // .width({
-            //     if Self::vertical {
-            //         Pixels(200.0)
-            //     } else { 
-            //         Pixels(200.0)
-            //     }
-            // })
     }
 
 

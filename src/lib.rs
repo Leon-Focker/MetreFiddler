@@ -24,6 +24,7 @@ struct MetreFiddler {
     vel_skew: f32,
     lower_threshold: f32,
     upper_threshold: f32,
+    bar_pos: f32,
 }
 
 #[derive(Params)]
@@ -85,6 +86,7 @@ impl Default for MetreFiddler {
             vel_skew: 0.5,
             lower_threshold: 0.0,
             upper_threshold: 1.0,
+            bar_pos: 0.0,
         }
     }
 }
@@ -169,7 +171,6 @@ impl Default for MetreFiddlerParams {
     }
 }
 
-// TODO Logic for bar_position
 impl MetreFiddler {
     fn process_event<S: SysExMessage>(&mut self, event: NoteEvent<S>) -> Option<NoteEvent<S>> {
         let metric_data = &self.params.metre_data.lock().unwrap();
@@ -180,13 +181,10 @@ impl MetreFiddler {
         // time in seconds
         let time = self.progress_in_samples as f32 / self.sample_rate;
         let time_in_bar_normalized = if self.params.use_position.value() {
-            // TODO smoothed
-            self.params.bar_position.value()
+            self.bar_pos
         } else {
             let pos = time.rem_euclid(self.metric_duration) / self.metric_duration;
-            // TODO set bar_position
             self.params.displayed_position.store(pos, SeqCst);
-            //self.params.displayed_position.value.store(pos, SeqCst);
             pos
         };
         
@@ -266,7 +264,7 @@ impl Plugin for MetreFiddler {
                 max_threshold: metre_data.max.clone(),
                 display_metre_info: false,
                 display_duration: true,
-                displayed_position: self.params.displayed_position.load(SeqCst),
+                displayed_position: self.params.displayed_position.clone(),
                 check_for_phase_reset_toggle: false,
             },
         )
@@ -324,7 +322,8 @@ impl Plugin for MetreFiddler {
                 self.vel_skew = self.params.velocity_skew.smoothed.next_step(elapsed_samples);
                 self.lower_threshold = self.params.lower_threshold.smoothed.next_step(elapsed_samples);
                 self.upper_threshold = self.params.upper_threshold.smoothed.next_step(elapsed_samples);
-                self.metric_duration =  self.params.metric_dur_selector.smoothed.next_step(elapsed_samples)
+                self.metric_duration =  self.params.metric_dur_selector.smoothed.next_step(elapsed_samples);
+                self.bar_pos = self.params.bar_position.smoothed.next_step(elapsed_samples);
             } else {
                 self.vel_min = self.params.velocity_min.value();
                 self.vel_max = self.params.velocity_max.value();
@@ -332,6 +331,7 @@ impl Plugin for MetreFiddler {
                 self.lower_threshold = self.params.lower_threshold.value();
                 self.upper_threshold = self.params.upper_threshold.value();
                 self.metric_duration =  self.params.metric_dur_selector.value();
+                self.bar_pos = self.params.bar_position.value();
             }
             
             // set duration to length of a quarter note times the slider when bpm toggle is true:

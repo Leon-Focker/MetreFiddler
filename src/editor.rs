@@ -4,9 +4,11 @@ use vizia_plug::widgets::*;
 use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
 use std::sync::Arc;
 use std::sync::atomic::Ordering::SeqCst;
+use atomic_float::AtomicF32;
 use nih_plug::nih_log;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
+use crate::gui::param_display_knob::ParamDisplayKnob;
 use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
 use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
 use crate::gui::param_label::{ParamLabel, };
@@ -47,8 +49,9 @@ pub(crate) struct Data {
     pub(crate) last_input_is_valid: bool,
     pub(crate) max_threshold: usize,
     pub(crate) display_metre_info: bool,
+    // TODO needs better name
     pub(crate) display_duration: bool,
-    pub(crate) displayed_position: f32,
+    pub(crate) displayed_position: Arc<AtomicF32>,
     pub(crate) check_for_phase_reset_toggle: bool,
 }
 
@@ -137,10 +140,6 @@ pub(crate) fn create(
         // DAW Automation possible...
         Binding::new(cx, Data::check_for_phase_reset_toggle, |cx, _was_reset| {
             cx.emit(MetreFiddlerEvent::ToggleCheckForPhaseReset);
-        });
-        
-        Binding::new(cx, Data::displayed_position, |cx, _| {
-            
         });
         
         VStack::new(cx, |cx| {
@@ -357,10 +356,23 @@ fn duration_position(cx: &mut Context) {
                 .alignment(Alignment::Center);
             
             // TODO would be great to have marks on this corresponding to the beats
-            ParamSliderKnob::new(cx, Data::params, |params|
-                &params.bar_position)
-                .height(Pixels(20.0))
-                .width(Pixels(200.0));
+            Binding::new(cx, Data::display_duration, |cx, display| {
+                let display = display.get(cx);
+                
+                if display {
+                    ParamDisplayKnob::new(
+                        cx,
+                        Data::displayed_position
+                            .map(|position| position.load(SeqCst)))
+                        .height(Pixels(20.0))
+                        .width(Pixels(200.0));
+                } else {
+                    ParamSliderKnob::new(cx, Data::params, |params|
+                        &params.bar_position)
+                        .height(Pixels(20.0))
+                        .width(Pixels(200.0));
+                }                
+            });
         })
             .alignment(Alignment::TopCenter)
             .height(Stretch(0.2));
