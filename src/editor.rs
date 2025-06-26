@@ -7,7 +7,6 @@ use std::sync::atomic::Ordering::SeqCst;
 use atomic_float::AtomicF32;
 use nih_plug::nih_log;
 use crate::{MetreFiddlerParams};
-use crate::editor::data_derived_lenses::{display_duration, displayed_position};
 use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
 use crate::gui::param_display_knob::ParamDisplayKnob;
 use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
@@ -50,8 +49,7 @@ pub(crate) struct Data {
     pub(crate) last_input_is_valid: bool,
     pub(crate) max_threshold: usize,
     pub(crate) display_metre_info: bool,
-    // TODO needs better name
-    pub(crate) display_duration: bool,
+    pub(crate) use_pos: bool,
     pub(crate) displayed_position: Arc<AtomicF32>,
     pub(crate) check_for_phase_reset_toggle: bool,
 }
@@ -92,7 +90,7 @@ impl Model for Data {
                 self.display_metre_info = !self.display_metre_info;
             }
             MetreFiddlerEvent::ToggleDurationDisplay => {
-                self.display_duration = !self.display_duration;
+                self.use_pos = !self.use_pos;
             }
             MetreFiddlerEvent::TriggerPhaseReset => {
                 self.params.reset_info.store(true, SeqCst);
@@ -143,7 +141,7 @@ pub(crate) fn create(
             last_input_is_valid: true,
             max_threshold: metre_data.max.clone(),
             display_metre_info: false,
-            display_duration: true,
+            use_pos: params.use_position.value(),
             displayed_position: params.displayed_position.clone(),
             check_for_phase_reset_toggle: false,
         }
@@ -335,8 +333,8 @@ fn duration_position(cx: &mut Context) {
             })
                 .alignment(Alignment::TopCenter);
 
-            Binding::new(cx, Data::display_duration, |cx, display| {
-                if !display.get(cx) {
+            Binding::new(cx, Data::use_pos, |cx, use_pos| {
+                if use_pos.get(cx) {
                     Element::new(cx)
                         .background_color(RGBA::rgba(250, 250, 250, 255))
                         .opacity(1.0);
@@ -369,10 +367,10 @@ fn duration_position(cx: &mut Context) {
                 .alignment(Alignment::Center);
             
             // TODO would be great to have marks on this corresponding to the beats
-            Binding::new(cx, Data::display_duration, |cx, display| {
-                let display = display.get(cx);
+            Binding::new(cx, Data::use_pos, |cx, use_pos| {
+                let display_pos = !use_pos.get(cx);
                 
-                if display {
+                if display_pos {
                     ParamDisplayKnob::new(
                         cx,
                         Data::displayed_position
