@@ -2,11 +2,12 @@ use nih_plug::prelude::{Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
 use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::Ordering::SeqCst;
 use atomic_float::AtomicF32;
 use nih_plug::nih_log;
 use crate::{MetreFiddlerParams};
+use crate::editor::data_derived_lenses::{display_duration, displayed_position};
 use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
 use crate::gui::param_display_knob::ParamDisplayKnob;
 use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
@@ -127,14 +128,26 @@ pub(crate) fn default_state() -> Arc<ViziaState> {
 }
 
 pub(crate) fn create(
+    params: Arc<MetreFiddlerParams>,
     editor_state: Arc<ViziaState>,
-    editor_data: Data
 ) -> Option<Box<dyn Editor>> {
     create_vizia_editor(editor_state, ViziaTheming::Custom, move |cx, _| {
         // add new styling
         let _ = cx.add_stylesheet(NEW_STYLE);
 
-        editor_data.clone().build(cx);
+        let metre_data = params.metre_data.lock().unwrap();
+        
+        Data {
+            params: params.clone(),
+            text_input: metre_data.input.clone(),
+            last_input_is_valid: true,
+            max_threshold: metre_data.max.clone(),
+            display_metre_info: false,
+            display_duration: true,
+            displayed_position: params.displayed_position.clone(),
+            check_for_phase_reset_toggle: false,
+        }
+            .build(cx);
 
         // This is a kinda hacky way to get the button and BoolParm to reset itself, but keeping
         // DAW Automation possible...

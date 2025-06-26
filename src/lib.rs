@@ -160,7 +160,7 @@ impl Default for MetreFiddlerParams {
                 .with_smoother(Linear(50.0)),
 
             use_position: BoolParam::new(
-              "Use and automate the Position within the Bar, instead of the Duration for the bar",
+              "Use and automate Position, not Duration",
               false
             ),
             
@@ -253,20 +253,9 @@ impl Plugin for MetreFiddler {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        let metre_data = self.params.metre_data.lock().unwrap();
-        
         editor::create(
+            self.params.clone(),
             self.params.editor_state.clone(),
-            editor::Data {
-                params: self.params.clone(),
-                text_input: metre_data.input.clone(),
-                last_input_is_valid: true,
-                max_threshold: metre_data.max.clone(),
-                display_metre_info: false,
-                display_duration: true,
-                displayed_position: self.params.displayed_position.clone(),
-                check_for_phase_reset_toggle: false,
-            },
         )
     }
 
