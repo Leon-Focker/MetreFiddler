@@ -2,7 +2,7 @@ use nih_plug::prelude::{Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
 use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
-use std::sync::{Arc};
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::Ordering::SeqCst;
 use atomic_float::AtomicF32;
 use nih_plug::nih_log;
@@ -13,10 +13,13 @@ use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
 use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
 use crate::gui::param_label::{ParamLabel, };
 use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
+use crate::gui::param_ticks::ParamTicks;
 use crate::metre_data::parse_input;
 
 // TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and
 //  sometimes it doesn't. (on linux reaper, fl studio windows is perfect?)
+
+// TODO is there a way to clean up the Data struct?
 
 pub const NOTO_SANS: &str = "Noto Sans";
 
@@ -52,6 +55,7 @@ pub(crate) struct Data {
     pub(crate) use_pos: bool,
     pub(crate) displayed_position: Arc<AtomicF32>,
     pub(crate) check_for_phase_reset_toggle: bool,
+    pub(crate) durations: Arc<Mutex<Vec<f32>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +79,7 @@ impl Model for Data {
                     // parse String and send to Plugin
                     match parse_input(new_text) {
                         Ok(new_metre_data) => {
+                            self.durations = Arc::new(Mutex::new(new_metre_data.durations.clone()));
                             *metre_data = new_metre_data;
                             self.max_threshold = metre_data.max;
                             self.last_input_is_valid = true;
@@ -144,6 +149,7 @@ pub(crate) fn create(
             use_pos: params.use_position.value(),
             displayed_position: params.displayed_position.clone(),
             check_for_phase_reset_toggle: false,
+            durations: Arc::new(Mutex::new(metre_data.durations.clone())),
         }
             .build(cx);
 
@@ -369,23 +375,39 @@ fn duration_position(cx: &mut Context) {
             })
                 .alignment(Alignment::Center);
             
-            // TODO would be great to have marks on this corresponding to the beats
-            Binding::new(cx, Data::use_pos, |cx, use_pos| {
-                let display_pos = !use_pos.get(cx);
+            ZStack::new(cx, |cx| {
+                VStack::new(cx, |cx| {
+                    Binding::new(cx, Data::durations, |cx, durs| {
+                        ParamTicks::new(
+                            cx,
+                            durs
+                                .map(|durations| durations.lock().unwrap().clone()))
+                            .width(Pixels(200.0))
+                            .height(Pixels(20.0));                        
+                    });
+                })
+                    .alignment(Alignment::Center);
                 
-                if display_pos {
-                    ParamDisplayKnob::new(
-                        cx,
-                        Data::displayed_position
-                            .map(|position| position.load(SeqCst)))
-                        .height(Pixels(20.0))
-                        .width(Pixels(200.0));
-                } else {
-                    ParamSliderKnob::new(cx, Data::params, |params|
-                        &params.bar_position)
-                        .height(Pixels(20.0))
-                        .width(Pixels(200.0));
-                }                
+                VStack::new(cx, |cx| {
+                    Binding::new(cx, Data::use_pos, |cx, use_pos| {
+                        let display_pos = !use_pos.get(cx);
+
+                        if display_pos {
+                            ParamDisplayKnob::new(
+                                cx,
+                                Data::displayed_position
+                                    .map(|position| position.load(SeqCst)))
+                                .height(Pixels(20.0))
+                                .width(Pixels(200.0));
+                        } else {
+                            ParamSliderKnob::new(cx, Data::params, |params|
+                                &params.bar_position)
+                                .height(Pixels(20.0))
+                                .width(Pixels(200.0));
+                        }
+                    });
+                })
+                    .alignment(Alignment::Center);
             });
         })
             .alignment(Alignment::TopCenter)
