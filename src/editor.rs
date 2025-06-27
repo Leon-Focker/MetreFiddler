@@ -191,6 +191,8 @@ fn upper_part(cx: &mut Context) {
         // The Velocity Sliders
         VStack::new(cx, |cx| {
             HStack::new(cx, |cx| {
+                Element::new(cx)
+                    .width(Pixels(10.0));
                 // min vel
                 VStack::new(cx, |cx| {
                     ParamSliderV::new(cx, Data::params, |params|
@@ -208,24 +210,19 @@ fn upper_part(cx: &mut Context) {
                     Label::new(cx, "max");
                 })
                     .padding_top(Pixels(20.0))
-                    .alignment(Alignment::Left);
+                    .alignment(Alignment::Center);
                 // Skew
                 VStack::new(cx, |cx| {
                     ParamSliderKnob::new(cx, Data::params, |params|
                         &params.velocity_skew)
                         .set_vertical(true);
-                    // ParamLabel::new(
-                    //     cx,
-                    //     Data::params,
-                    //     |params| &params.velocity_skew,
-                    //     |param| {
-                    //         param.to_string()
-                    //     }
-                    // );
                     Label::new(cx, "skew");
                 })
                     .padding_top(Pixels(20.0))
-                    .alignment(Alignment::Left);
+                    .alignment(Alignment::Center);
+                
+                Element::new(cx)
+                    .width(Pixels(10.0));
             });
 
             Label::new(cx, "Velocity")
@@ -259,6 +256,9 @@ fn upper_part(cx: &mut Context) {
                 Binding::new(cx, Data::max_threshold, |cx, max| {
                     let max_val = max.get(cx);
 
+                    Element::new(cx)
+                        .width(Pixels(10.0));
+                    // min thresh
                     VStack::new(cx, |cx| {
                         ParamSliderV::new(cx, Data::params, |params|
                             &params.lower_threshold)
@@ -266,8 +266,8 @@ fn upper_part(cx: &mut Context) {
                         Label::new(cx, "min");
                     })
                         .padding_top(Pixels(20.0))
-                        .alignment(Alignment::Right);
-
+                        .alignment(Alignment::Center);
+                    // max thresh
                     VStack::new(cx, |cx| {
                         ParamSliderV::new(cx, Data::params, |params|
                             &params.upper_threshold)
@@ -276,6 +276,8 @@ fn upper_part(cx: &mut Context) {
                     })
                         .padding_top(Pixels(20.0))
                         .alignment(Alignment::Center);
+                    Element::new(cx)
+                        .width(Pixels(10.0));
                 });
             });
             
