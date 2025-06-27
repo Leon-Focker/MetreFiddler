@@ -10,7 +10,7 @@ env:
 
 jobs:
   build:
-  
+
     strategy:
       matrix:
         include:
@@ -27,7 +27,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -35,18 +35,19 @@ jobs:
           sudo apt-get install -y libgl1-mesa-dev libxcursor-dev pkg-config
           sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
           sudo apt-get install -y libxcb-icccm4-dev libx11-xcb-dev libxcb-dri2-0-dev
-
+          sudo apt-get install -y libfontconfig1-dev libfreetype6-dev libegl1-mesa-dev libwayland-dev
       - name: Install Rust targets (macOS)
         if: runner.os == 'macOS'
         run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
 
       - name: Build release binary
         run: |
-          if [ "${{ matrix.os }}" == "macOS" ]; then
-            cargo build --release --target ${{ matrix.arch }}-apple-darwin
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            cargo xtask bundle metrefiddler --release --target ${{ matrix.arch }}-apple-darwin
           else
             cargo xtask bundle metrefiddler --release
           fi
+        shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -55,7 +56,7 @@ jobs:
           path: |
             target/${{ matrix.arch }}-apple-darwin/release/*
             target/bundled/*
-          
+
   release:
     needs: build  # Ensure all builds finish first
     runs-on: ubuntu-latest
@@ -76,7 +77,6 @@ jobs:
               zip -r "$dir.zip" "$dir"
             fi
           done
-
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
