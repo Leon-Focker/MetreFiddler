@@ -2,7 +2,7 @@ use nih_plug::prelude::{Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
 use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
 use atomic_float::AtomicF32;
 use nih_plug::nih_log;
@@ -16,7 +16,7 @@ use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
 use crate::metre_data::parse_input;
 
 // TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and
-//  sometimes it doesn't.
+//  sometimes it doesn't. (on linux reaper, fl studio windows is perfect?)
 
 pub const NOTO_SANS: &str = "Noto Sans";
 
@@ -167,7 +167,8 @@ pub(crate) fn create(
                         Label::new(cx, "")
                             .text(PLUGIN_INFO_TEXT)
                             .top(Pixels(5.0))
-                            .font_size(13.0);
+                            // better too small than clipping
+                            .font_size(12.0);
                     }
                 })
             })

@@ -4,7 +4,6 @@ use nih_plug::prelude::Param;
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::param_base::ParamWidgetBase;
 use vizia_plug::widgets::util::{self, ModifiersExt};
-use crate::gui::param_slider_vertical::ParamSliderV;
 
 /// When shift+dragging a parameter, one pixel dragged corresponds to this much change in the
 /// normalized parameter.

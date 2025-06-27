@@ -1,10 +1,7 @@
 // This is a modified copy of nih-plugs param_slider.rs
 // ! A slider that integrates with NIH-plug's [`Param`] types.
-use nih_plug::prelude::Param;
 use vizia_plug::vizia::prelude::*;
-use vizia_plug::widgets::param_base::ParamWidgetBase;
-use vizia_plug::widgets::util::{self, ModifiersExt};
-use crate::gui::param_slider_vertical::ParamSliderV;
+use vizia_plug::widgets::util::{ModifiersExt};
 
 // TODO this is a lot of repeated code from param_slider_knob...
 
@@ -130,16 +127,6 @@ impl ParamDisplayKnob {
                 .padding_right(Pixels(-5.0))
                 .padding_left(Pixels(5.0));
         }
-    }
-
-    fn compute_fill_start_delta(
-        current_value: f32,
-    ) -> (f32, f32) {
-        
-        (
-            0.0,
-            current_value,
-        )
     }
 }
 
