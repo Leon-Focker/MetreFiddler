@@ -172,14 +172,17 @@ impl Default for MetreFiddlerParams {
 }
 
 impl MetreFiddler {
+    /// Get a MIDI event and either return none (filter it) or return it with a new velocity
+    /// value (according to the current metric position).
     fn process_event<S: SysExMessage>(&mut self, event: NoteEvent<S>) -> Option<NoteEvent<S>> {
         let metric_data = &self.params.metre_data.lock().unwrap();
         let metric_durations = &metric_data.durations;
         let indisp_ls = &metric_data.value;
         let max = indisp_ls.len() - 1;
         
-        // time in seconds
+        // Calculate the current time seconds from the current progress_in_samples
         let time = self.progress_in_samples as f32 / self.sample_rate;
+        // Get the normalized time within a measure (between 0.0 and 1.0)
         let time_in_bar_normalized = if self.params.use_position.value() {
             self.bar_pos
         } else {
@@ -188,15 +191,17 @@ impl MetreFiddler {
             pos
         };
         
-        // calculate the indispensability value
+        // Get the index of the current indispensability value
         let indisp_idx: usize = if let Ok(idx) = decider(time_in_bar_normalized, &metric_durations) {
             idx as usize
         } else { 0 };
+        // Get the actual indispensability value from the vector
         let indisp_val = indisp_ls[indisp_idx];
         
+        // The current velocity Parameters
         let v_min: f32 = self.vel_min.min(self.vel_max) / 127.0;
         let v_max: f32 = self.vel_max / 127.0;
-        // velocity in range 0 - 1, 
+        // Velocity in range 0.0 - 1.0, 
         let normalized_vel = (1.0 / (indisp_val + 1) as f32).powf(2.0*(1.0 - self.vel_skew));
         // rescaled by vel_min and vel_max parameters
         let vel: f32 = if v_min == v_max {
@@ -206,6 +211,7 @@ impl MetreFiddler {
                 .unwrap_or(0.8)
         };
 
+        // Return new MIDI event (or None)
         match event {
             NoteEvent::NoteOn {
                 timing,
@@ -285,6 +291,7 @@ impl Plugin for MetreFiddler {
             self.progress_in_samples = 0;
         }
                 
+        // Handle the reset_phase button:
         // automated value
         if self.params.reset_phase.value() {
             if ! self.last_reset_phase_value {
