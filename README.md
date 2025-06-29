@@ -8,6 +8,8 @@ This Plugin is built using the [nih_plug framework](https://github.com/robbert-v
 
 Precompiled binaries can be found in the [Releases tab](https://github.com/Leon-Focker/MetreFiddler/releases/)
 
+On macOS you may need to [disable Gatekeeper](https://disable-gatekeeper.github.io/) to be able to use this plugin.
+
 After installing [Rust](https://rustup.rs/), you can compile MetreFiddler yourself with this command:
 
 ```shell
