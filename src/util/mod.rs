@@ -2,6 +2,14 @@ use std::fmt::Debug;
 use std::iter::Sum;
 use num_traits::Num;
 
+///  Given a value within an original range, return its value within a new range.
+///
+/// # Examples
+/// ```
+/// let rescaled = metrefiddler::rescale(0.5, 0.0, 1.0, 0.0, 100.0, false).unwrap();
+/// 
+/// assert_eq!(rescaled, 50.0);
+/// ```
 pub fn rescale<T: Num + PartialOrd + Copy + Debug>(
     val: T,
     min: T,
@@ -34,6 +42,19 @@ pub fn rescale<T: Num + PartialOrd + Copy + Debug>(
     Ok(new_min + prop * range2)
 }
 
+/// Given a selector between 0.0 and 1.0 and a list of weights, return the index 
+/// corresponding to the position in the cumulative distribution defined by the weights.
+/// Returns an error if weights are empty or rescaling fails.
+/// 
+/// # Examples
+/// ```
+/// let elements = vec!['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+/// let weights = vec![1.0, 1.0, 2.0, 2.0, 3.0, 1.0, 2.0];
+/// let index = metrefiddler::decider(0.1, &weights).unwrap();
+/// let element = elements[index as usize];
+///
+/// assert_eq!(element, 'b');
+/// ```
 pub fn decider<T: Num + PartialOrd + Copy + Debug + Sum<T>>(selector: T, weights: &[T]) -> Result<T, String> {
     let selector: T = rescale(selector, T::zero(), T::one(), T::zero(), weights.iter().copied().sum(), false)?;
     decider_aux(selector, &weights[1..], T::zero(), weights[0])

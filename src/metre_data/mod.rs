@@ -3,7 +3,8 @@ use crate::metre::indispensability::rqq_to_indispensability_list;
 use crate::metre::rqq::parse_rqq;
 
 // *must* derive Serialize and Deserialize for persistence
-#[derive(Debug, Serialize, Deserialize, Clone)] // Added Clone for easier use in Vizia
+/// Holds all the important information for an RQQ defined metric structure.
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MetreData {
     pub input: String,
     pub value: Vec<usize>,
@@ -13,15 +14,12 @@ pub struct MetreData {
 
 impl Default for MetreData {
     fn default() -> Self {
-        Self {
-            input: String::from("(4 (1 1 1 1))"),
-            value: vec![0, 3, 2, 1],
-            max: 3,
-            durations: vec![0.25; 4], // TODO calc!
-        }
+        let string = String::from("(4 (1 1 1 1))");
+        parse_input(&string).unwrap()
     }
 }
 
+/// Parse a &str that defines a metric structure using RQQ to MetreData.
 pub fn parse_input(text: &str) -> Result<MetreData, String> {
     let rqq = parse_rqq(text)?;
     let durations = rqq.to_durations(1.0)?;

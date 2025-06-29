@@ -1,5 +1,6 @@
 use crate::metre::rqq::RQQ::{Elem, List};
 
+/// A nested list representing an RQQ notation.
 #[derive(Debug, Clone)]
 pub enum RQQ {
     Elem(f32),
@@ -42,6 +43,15 @@ impl RQQ {
     //     }
     // }
 
+    /// Extract the metrical hierarchy from RQQ notation.
+    /// 
+    /// # Examples
+    /// ```
+    /// let rqq = parse_rqq(&String::from("(4 (1 1 1 1))")).unwrap();
+    /// let gnsm = rqq.to_gnsm().unwrap();
+    /// 
+    /// assert_eq!(gnsm, vec![1, 0, 0, 0]);
+    /// ```
     pub fn to_gnsm(self) -> Result<Vec<usize>, String>{
         match self {
             Elem(_) => Err(format!("rqq.to_gnsm got malformed rqq list")),
@@ -142,6 +152,7 @@ impl RQQ {
     }
 }
 
+/// Parse a &str to RQQ 
 pub fn parse_rqq(input: &str) ->  Result<RQQ, String> {
     if input.len() < 1 { return Err("rqq must have at least one element".to_string()); }
     let mut result: RQQ = List(vec![]);
@@ -185,9 +196,6 @@ pub fn parse_rqq(input: &str) ->  Result<RQQ, String> {
         },
         Elem(_) => result,
     };
-
-    // result.print();
-    // println!();
     
     if result.no_empty_lists() {
         Ok(result)
