@@ -295,60 +295,63 @@ fn duration_position(cx: &mut Context) {
     VStack::new(cx, |cx| {
 
         // Duration
-        ZStack::new(cx, |cx| {
-            // Label that changes according to Parameter
-            VStack::new(cx, |cx| {
-                ParamLabel::new(
-                    cx,
-                    Data::params,
-                    |params| &params.use_bpm,
-                    |param| {
-                        if param < 0.5 {
-                            String::from("Duration in Seconds")
-                        } else {
-                            String::from("Duration in Quarter Notes")
-                        }
-                    },
-                )
-                    .alignment(Alignment::BottomCenter)
-                    .font_weight(FontWeightKeyword::Bold);
+        ParamBinding::new(
+            cx,
+            Data::params,
+            |params| &params.use_position,
+            |cx, use_pos| {
 
-                ParamSlider::new(cx, Data::params, |params|
-                    &params.metric_dur_selector)
-                    .width(Pixels(200.0));
+                ZStack::new(cx, |cx| {
+                    // Label that changes according to Parameter
+                    VStack::new(cx, |cx| {
+                        ParamLabel::new(
+                            cx,
+                            Data::params,
+                            |params| &params.use_bpm,
+                            |param| {
+                                if param < 0.5 {
+                                    String::from("Duration in Seconds")
+                                } else {
+                                    String::from("Duration in Quarter Notes")
+                                }
+                            },
+                        )
+                            .alignment(Alignment::BottomCenter)
+                            .font_weight(FontWeightKeyword::Bold);
 
-                HStack::new(cx, |cx| {
-                    // BPM Toggle
-                    ParamButton::new(cx, Data::params, |params|
-                        &params.use_bpm)
-                        .with_label("  Use BPM")
-                        .width(Pixels(100.0));
-                    // Reset Phase
-                    Button::new(
-                        cx,
-                        |cx| Label::new(cx, "reset phase"))
-                        .on_press(|cx| {
-                            cx.emit(MetreFiddlerEvent::TriggerPhaseReset);
+                        ParamSlider::new(cx, Data::params, |params|
+                            &params.metric_dur_selector)
+                            .width(Pixels(200.0));
+
+                        HStack::new(cx, |cx| {
+                            // BPM Toggle
+                            ParamButton::new(cx, Data::params, |params|
+                                &params.use_bpm)
+                                .with_label("  Use BPM")
+                                .width(Pixels(100.0));
+                            // Reset Phase
+                            Button::new(
+                                cx,
+                                |cx| Label::new(cx, "reset phase"))
+                                .on_press(|cx| {
+                                    cx.emit(MetreFiddlerEvent::TriggerPhaseReset);
+                                })
+                                .width(Pixels(100.0));
                         })
-                        .width(Pixels(100.0));
-                })
-                    .alignment(Alignment::Center)
-                    .top(Pixels(10.0));
-            })
-                .alignment(Alignment::TopCenter);
+                            .alignment(Alignment::Center)
+                            .top(Pixels(10.0));
+                    })
+                        .alignment(Alignment::TopCenter);
 
-            ParamBinding::new(
-                cx,
-                Data::params,
-                |params| &params.use_position,
-                |cx, use_pos| {
-                if use_pos > 0.5 {
-                    Element::new(cx)
-                        .background_color(RGBA::rgba(250, 250, 250, 255))
-                        .opacity(1.0);
-                }
-            });
-        })
+                    // Hide Duration Gui when using the position slider
+                    if use_pos > 0.5 {
+                        Element::new(cx)
+                            .background_color(RGBA::rgba(250, 250, 250, 255))
+                            .opacity(1.0);
+                    }
+                })
+                    .alignment(Alignment::Center);
+            })
             .height(Stretch(0.4))
             .alignment(Alignment::Center);
 
