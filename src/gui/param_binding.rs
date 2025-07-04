@@ -18,16 +18,18 @@ impl ParamBinding {
         Params: 'static,
         P: Param + 'static,
         FMap: Fn(&Params) -> &P + Copy + 'static,
-        F: Fn(&mut Context) + 'static
+        F: Fn(&mut Context, f32) + 'static,
     {
         Self {}
             .build(
                 cx,
                 ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
-                    let foo =
+                    let param_value =
                         param_data.make_lens(|param| param.unmodulated_normalized_value());
-                    Binding::new(cx, foo, move |cx, vertical| {
-                        content(cx);
+                    
+                    Binding::new(cx, param_value, move |cx, param| {
+                        let test = param.get(cx);
+                        content(cx, test);
                     });
                 }),
             )
