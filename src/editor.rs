@@ -8,6 +8,7 @@ use atomic_float::AtomicF32;
 use nih_plug::nih_log;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
+use crate::gui::param_binding::ParamBinding;
 use crate::gui::param_display_knob::ParamDisplayKnob;
 use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
 use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
@@ -52,7 +53,6 @@ pub(crate) struct Data {
     pub(crate) last_input_is_valid: bool,
     pub(crate) max_threshold: usize,
     pub(crate) display_metre_info: bool,
-    pub(crate) use_pos: bool,
     pub(crate) displayed_position: Arc<AtomicF32>,
     pub(crate) check_for_phase_reset_toggle: bool,
     pub(crate) durations: Arc<Mutex<Vec<f32>>>,
@@ -62,7 +62,6 @@ pub(crate) struct Data {
 pub enum MetreFiddlerEvent {
     UpdateString(String),
     ToggleMetreInfo,
-    ToggleDurationDisplay,
     TriggerPhaseReset,
     RevertPhaseReset,
     ToggleCheckForPhaseReset,
@@ -93,9 +92,6 @@ impl Model for Data {
             }
             MetreFiddlerEvent::ToggleMetreInfo => {
                 self.display_metre_info = !self.display_metre_info;
-            }
-            MetreFiddlerEvent::ToggleDurationDisplay => {
-                self.use_pos = !self.use_pos;
             }
             MetreFiddlerEvent::TriggerPhaseReset => {
                 self.params.reset_info.store(true, SeqCst);
@@ -146,7 +142,6 @@ pub(crate) fn create(
             last_input_is_valid: true,
             max_threshold: metre_data.max.clone(),
             display_metre_info: false,
-            use_pos: params.use_position.value(),
             displayed_position: params.displayed_position.clone(),
             check_for_phase_reset_toggle: false,
             durations: Arc::new(Mutex::new(metre_data.durations.clone())),
@@ -342,8 +337,12 @@ fn duration_position(cx: &mut Context) {
             })
                 .alignment(Alignment::TopCenter);
 
-            Binding::new(cx, Data::use_pos, |cx, use_pos| {
-                if use_pos.get(cx) {
+            ParamBinding::new(
+                cx,
+                Data::params,
+                |params| &params.use_position,
+                |cx, use_pos| {
+                if use_pos > 0.5 {
                     Element::new(cx)
                         .background_color(RGBA::rgba(250, 250, 250, 255))
                         .opacity(1.0);
@@ -359,9 +358,6 @@ fn duration_position(cx: &mut Context) {
                 // Switch between Duration and Position
                 ParamButton::new(cx, Data::params, |params|
                     &params.use_position)
-                    .on_press(|cx| {
-                        cx.emit(MetreFiddlerEvent::ToggleDurationDisplay)
-                    })
                     .class("red_button")
                     .with_label("Use")
                     .height(Pixels(20.0))
@@ -389,8 +385,12 @@ fn duration_position(cx: &mut Context) {
                     .alignment(Alignment::Center);
                 
                 VStack::new(cx, |cx| {
-                    Binding::new(cx, Data::use_pos, |cx, use_pos| {
-                        let display_pos = !use_pos.get(cx);
+                    ParamBinding::new(
+                        cx,
+                        Data::params, 
+                        |params| &params.use_position,
+                        |cx, use_pos| {
+                        let display_pos = use_pos < 0.5;
 
                         if display_pos {
                             ParamDisplayKnob::new(
@@ -405,7 +405,8 @@ fn duration_position(cx: &mut Context) {
                                 .height(Pixels(20.0))
                                 .width(Pixels(200.0));
                         }
-                    });
+                    })
+                        .alignment(Alignment::Center);
                 })
                     .alignment(Alignment::Center);
             });
