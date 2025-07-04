@@ -18,7 +18,7 @@ use crate::gui::param_ticks::ParamTicks;
 use crate::metre_data::parse_input;
 
 // TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and
-//  sometimes it doesn't. (only on linux (repaer)?)
+//  sometimes it doesn't. (only on linux)
 
 // TODO is there a way to clean up the Data struct?
 
