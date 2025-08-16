@@ -1,10 +1,7 @@
 use nih_plug::prelude::*;
-use vizia_plug::ViziaState;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::AtomicBool;
+use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
-use nih_plug::prelude::SmoothingStyle::Linear;
-use crate::metre_data::{MetreData};
+use crate::params::MetreFiddlerParams;
 use crate::util::{decider, rescale};
 
 mod editor;
@@ -12,64 +9,22 @@ mod metre_data;
 mod metre;
 mod gui;
 mod util;
+mod params;
 
 struct MetreFiddler {
     params: Arc<MetreFiddlerParams>,
     sample_rate: f32,
-    last_reset_phase_value: bool,
-    metric_duration: f32,
     progress_in_samples: u64,
+    last_reset_phase_value: bool,
+
+    // TODO these should not be necessary, because they are just parameters:
     vel_min: f32,
     vel_max: f32,
     vel_skew: f32,
     lower_threshold: f32,
     upper_threshold: f32,
+    metric_duration: f32,
     bar_pos: f32,
-}
-
-#[derive(Params)]
-struct MetreFiddlerParams {
-    /// The editor state, saved together with the parameter state so the custom scaling can be
-    /// restored.
-    #[persist = "editor-state"]
-    editor_state: Arc<ViziaState>,
-
-    #[id = "use_bpm"]
-    pub use_bpm: BoolParam,
-    
-    #[id = "metric_dur_selector"]
-    pub metric_dur_selector: FloatParam,
-
-    #[id = "velocity_min"]
-    pub velocity_min: FloatParam,
-    #[id = "velocity_max"]
-    pub velocity_max: FloatParam,
-
-    #[id = "velocity_skew"]
-    pub velocity_skew: FloatParam,
-
-    #[id = "lower_threshold"]
-    pub lower_threshold: FloatParam,
-    #[id = "upper_threshold"]
-    pub upper_threshold: FloatParam,
-
-    #[id = "bar_position"]
-    pub bar_position: FloatParam,
-    #[id = "use_position"]
-    pub use_position: BoolParam,
-    // This holds the value that is displayed when use_position is false
-    pub displayed_position: Arc<AtomicF32>,
-    
-    #[id = "reset_phase"]
-    pub reset_phase: BoolParam,
-    
-    pub reset_info: Arc<AtomicBool>,
-
-    // custom data struct, marked with `#[persist]`
-    // The `Arc<Mutex<CustomData>>` allows to share and modify it
-    // between the GUI thread and the audio thread safely.
-    #[persist = "metre_data"]
-    pub metre_data: Arc<Mutex<MetreData>>,
 }
 
 impl Default for MetreFiddler {
@@ -91,91 +46,13 @@ impl Default for MetreFiddler {
     }
 }
 
-impl Default for MetreFiddlerParams {
-    fn default() -> Self {
-        Self {
-            editor_state: editor::default_state(),
-
-            // Select whether to match speed to the DAW's BPM
-            use_bpm: BoolParam::new(
-                "Use BPM",
-                false
-            ),
-            
-            // Select the duration for the metric duration
-             metric_dur_selector: FloatParam::new(
-                 "Duration Selection",
-                 1.0,
-                 FloatRange::Skewed{ min: 0.1, max: 20.0, factor: 0.5 },
-            )
-                 .with_smoother(Linear(50.0)),
-
-            metre_data: Arc::new(Mutex::new(MetreData::default())),
-
-            velocity_min: FloatParam::new(
-                "Minimum for the velocity output",
-                0.0,
-                FloatRange::Linear { min: 0.0, max: 127.0 },
-            )
-                .with_smoother(Linear(50.0)),
-            
-            velocity_max: FloatParam::new(
-                "Maximum for the velocity output",
-                127.0,
-                FloatRange::Linear { min: 0.0, max: 127.0 },
-            )
-                .with_smoother(Linear(50.0)),
-
-            velocity_skew: FloatParam::new(
-                "Skew value for Velocity Range",
-                0.5,
-                FloatRange::Linear { min: 0.0, max: 1.0 },
-            )
-                .with_smoother(Linear(50.0)),
-
-            lower_threshold: FloatParam::new(
-                "Lower Threshold for the Midi output",
-                0.0,
-                FloatRange::Linear { min: 0.0, max: 1.0},
-            )
-                .with_smoother(Linear(50.0)),
-
-            upper_threshold: FloatParam::new(
-                "Upper Threshold for the Midi output",
-                1.0,
-                FloatRange::Linear { min: 0.0, max: 1.0},
-            )
-                .with_smoother(Linear(50.0)),
-
-            reset_phase: BoolParam::new(
-                "Reset metric phasse",
-                false
-            ),
-
-            bar_position: FloatParam::new(
-                "The current position within a bar",
-                0.0,
-                FloatRange::Linear { min: 0.0, max: 1.0},
-            )
-                .with_smoother(Linear(50.0)),
-
-            use_position: BoolParam::new(
-              "Use and automate Position, not Duration",
-              false
-            ),
-            
-            displayed_position: Arc::new(AtomicF32::new(0.0)),
-            
-            reset_info: Arc::new(AtomicBool::new(false)),
-        }
-    }
-}
 
 impl MetreFiddler {
     /// Get a MIDI event and either return none (filter it) or return it with a new velocity
     /// value (according to the current metric position).
     fn process_event<S: SysExMessage>(&mut self, event: NoteEvent<S>) -> Option<NoteEvent<S>> {
-        let metric_data = &self.params.metre_data.lock().unwrap();
+        // TODO interpolate indisp-values between A & B, not midi -> this differentiates this from a midi-interpolator.
+        let metric_data = &self.params.metre_data_a.lock().unwrap();
         let metric_durations = &metric_data.durations;
         let indisp_ls = &metric_data.value;
         let max = indisp_ls.len() - 1;
@@ -284,7 +161,7 @@ impl Plugin for MetreFiddler {
         let mut current_sample: u32 = 0;
         let buffer_len = buffer.samples();
         let mut last_note_was_let_through = true;
-        let mut elapsed_samples: u32 = 0;
+        let mut elapsed_samples: u32;
 
         // reset progress when playback stops.
         if !context.transport().playing {

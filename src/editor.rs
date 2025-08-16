@@ -49,49 +49,77 @@ const NEW_STYLE: &str = r#"
 #[derive(Lens, Clone)]
 pub(crate) struct Data {
     pub(crate) params: Arc<MetreFiddlerParams>,
-    pub(crate) text_input: String,
+    pub(crate) text_input_a: String,
+    pub(crate) text_input_b: String,
     pub(crate) last_input_is_valid: bool,
     pub(crate) max_threshold: usize,
     pub(crate) display_metre_info: bool,
+    pub(crate) display_b: bool,
     pub(crate) displayed_position: Arc<AtomicF32>,
-    pub(crate) check_for_phase_reset_toggle: bool,
-    pub(crate) durations: Arc<Mutex<Vec<f32>>>,
+    pub(crate) check_for_phase_reset_toggle: bool,   // this is toggled for every frame until the phase_reset button has been reset
+    pub(crate) durations_a: Arc<Mutex<Vec<f32>>>,
+    pub(crate) durations_b: Arc<Mutex<Vec<f32>>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum MetreFiddlerEvent {
-    UpdateString(String),
+    UpdateString(String, bool),
     ToggleMetreInfo,
     TriggerPhaseReset,
     RevertPhaseReset,
     ToggleCheckForPhaseReset,
+    ToggleAB,
 }
 
 impl Model for Data {
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|my_event, _meta| match my_event {
-            MetreFiddlerEvent::UpdateString(new_text) => {
-                let mut metre_data = self.params.metre_data.lock().unwrap();
-                if self.text_input != *new_text {
-                    // update Data
-                    self.text_input = new_text.clone();
-                    // parse String and send to Plugin
-                    match parse_input(new_text) {
-                        Ok(new_metre_data) => {
-                            self.durations = Arc::new(Mutex::new(new_metre_data.durations.clone()));
-                            *metre_data = new_metre_data;
-                            self.max_threshold = metre_data.max;
-                            self.last_input_is_valid = true;
-                        },
-                        Err(err_string) => {
-                            nih_log!("Failed to parse string: '{}': {}", self.text_input, err_string);
-                            self.last_input_is_valid = false;
-                        },
+            MetreFiddlerEvent::UpdateString(new_text, update_b) => {
+                if *update_b {
+                    let mut metre_data = self.params.metre_data_b.lock().unwrap();
+                    if self.text_input_b != *new_text {
+                        // update Data
+                        self.text_input_b = new_text.clone();
+                        // parse String and send to Plugin
+                        match parse_input(new_text) {
+                            Ok(new_metre_data) => {
+                                self.durations_b = Arc::new(Mutex::new(new_metre_data.durations.clone()));
+                                *metre_data = new_metre_data;
+                                self.max_threshold = metre_data.max;
+                                self.last_input_is_valid = true;
+                            },
+                            Err(err_string) => {
+                                nih_log!("Failed to parse string: '{}': {}", self.text_input_b, err_string);
+                                self.last_input_is_valid = false;
+                            },
+                        }
                     }
-                }
+                } else {
+                    let mut metre_data =  self.params.metre_data_a.lock().unwrap();
+                    if self.text_input_a != *new_text {
+                        // update Data
+                        self.text_input_a = new_text.clone();
+                        // parse String and send to Plugin
+                        match parse_input(new_text) {
+                            Ok(new_metre_data) => {
+                                self.durations_a = Arc::new(Mutex::new(new_metre_data.durations.clone()));
+                                *metre_data = new_metre_data;
+                                self.max_threshold = metre_data.max;
+                                self.last_input_is_valid = true;
+                            },
+                            Err(err_string) => {
+                                nih_log!("Failed to parse string: '{}': {}", self.text_input_a, err_string);
+                                self.last_input_is_valid = false;
+                            },
+                        }
+                    }
+                };
             }
             MetreFiddlerEvent::ToggleMetreInfo => {
                 self.display_metre_info = !self.display_metre_info;
+            }
+            MetreFiddlerEvent::ToggleAB => {
+                self.display_b = !self.display_b;
             }
             MetreFiddlerEvent::TriggerPhaseReset => {
                 self.params.reset_info.store(true, SeqCst);
@@ -103,7 +131,7 @@ impl Model for Data {
                 cx.emit(ParamEvent::SetParameter(param_ref, true).upcast());
                 cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
             }
-            RevertPhaseReset => {                
+            MetreFiddlerEvent::RevertPhaseReset => {
                 let param_ref = &self.params.reset_phase;
 
                 cx.emit(ParamEvent::BeginSetParameter(param_ref).upcast());
@@ -123,7 +151,7 @@ impl Model for Data {
 
 // Makes sense to also define this here, makes it a bit easier to keep track of
 pub(crate) fn default_state() -> Arc<ViziaState> {
-    ViziaState::new(|| (500, 300))
+    ViziaState::new(|| (500, 350))
 }
 
 pub(crate) fn create(
@@ -134,17 +162,21 @@ pub(crate) fn create(
         // add new styling
         let _ = cx.add_stylesheet(NEW_STYLE);
 
-        let metre_data = params.metre_data.lock().unwrap();
+        let metre_data_a = params.metre_data_a.lock().unwrap();
+        let metre_data_b = params.metre_data_b.lock().unwrap();
         
         Data {
             params: params.clone(),
-            text_input: metre_data.input.clone(),
+            text_input_a: metre_data_a.input.clone(),
+            text_input_b: metre_data_b.input.clone(),
             last_input_is_valid: true,
-            max_threshold: metre_data.max.clone(),
+            max_threshold: metre_data_a.max.clone(), // TODO
             display_metre_info: false,
+            display_b: false,
             displayed_position: params.displayed_position.clone(),
             check_for_phase_reset_toggle: false,
-            durations: Arc::new(Mutex::new(metre_data.durations.clone())),
+            durations_a: Arc::new(Mutex::new(metre_data_a.durations.clone())),
+            durations_b: Arc::new(Mutex::new(metre_data_b.durations.clone())),
         }
             .build(cx);
 
@@ -173,7 +205,7 @@ pub(crate) fn create(
                     }
                 })
             })
-                .height(Stretch(5.0));
+                .height(Stretch(3.0));
             
             // Lower Part of the Plugin
             lower_part(cx);
@@ -376,13 +408,26 @@ fn duration_position(cx: &mut Context) {
             
             ZStack::new(cx, |cx| {
                 VStack::new(cx, |cx| {
-                    Binding::new(cx, Data::durations, |cx, durs| {
-                        ParamTicks::new(
-                            cx,
-                            durs
-                                .map(|durations| durations.lock().unwrap().clone()))
-                            .width(Pixels(200.0))
-                            .height(Pixels(20.0));                        
+                    Binding::new(cx, Data::display_b, |cx, display_b| {
+                        if display_b.get(cx) {
+                            Binding::new(cx, Data::durations_b, |cx, durs| {
+                                ParamTicks::new(
+                                    cx,
+                                    durs
+                                        .map(|durations| durations.lock().unwrap().clone()))
+                                    .width(Pixels(200.0))
+                                    .height(Pixels(20.0));
+                            });
+                        } else {
+                            Binding::new(cx, Data::durations_a, |cx, durs| {
+                                ParamTicks::new(
+                                    cx,
+                                    durs
+                                        .map(|durations| durations.lock().unwrap().clone()))
+                                    .width(Pixels(200.0))
+                                    .height(Pixels(20.0));
+                            });
+                        }
                     });
                 })
                     .alignment(Alignment::Center);
@@ -422,34 +467,92 @@ fn duration_position(cx: &mut Context) {
 
 // Lower Part of the Plugin, containing the Metre Definition
 fn lower_part(cx: &mut Context) {
-    HStack::new(cx, |cx| {
-        // Info Button
-        VStack::new(cx, |cx| {
-            Button::new(cx,
-                        |cx| Label::new(cx, "info"))
-                .on_press(|cx| {
-                    cx.emit(MetreFiddlerEvent::ToggleMetreInfo)
-                })
-                .position_type(PositionType::Absolute)
-                .right(Pixels(10.0));
-        });
-       
-        // Metre Input
-        Textbox::new(cx, Data::text_input)
-            .on_submit(|cx, text, _| {
-                cx.emit(MetreFiddlerEvent::UpdateString(text));
-            })
-            .width(Stretch(3.0));
-        
-        // is valid
-        VStack::new(cx, |cx| {
-            Binding::new(cx, Data::last_input_is_valid, |cx, is_valid|{
-                let is_valid = is_valid.get(cx);
-                Label::new(cx, if is_valid { "✔️" } else { "❌" })
+    VStack::new(cx, |cx| {
+        // The Text, info and feedback:
+        HStack::new(cx, |cx| {
+            // Info Button
+            VStack::new(cx, |cx| {
+                Button::new(cx,
+                            |cx| Label::new(cx, "info"))
+                    .on_press(|cx| {
+                        cx.emit(MetreFiddlerEvent::ToggleMetreInfo)
+                    })
                     .position_type(PositionType::Absolute)
-                    .top(Pixels(5.0))
-                    .left(Pixels(10.0));
-            }); 
+                    .right(Pixels(10.0));
+            });
+
+            // Metre Input for A or B
+            Binding::new(cx, Data::display_b, |cx, display| {
+                if display.get(cx) {
+                    Textbox::new(cx, Data::text_input_b)
+                        .on_submit(|cx, text, _| {
+                            cx.emit(MetreFiddlerEvent::UpdateString(text, true));
+                        })
+                        .width(Stretch(3.0));
+                } else {
+                    Textbox::new(cx, Data::text_input_a)
+                        .on_submit(|cx, text, _| {
+                            cx.emit(MetreFiddlerEvent::UpdateString(text, false));
+                        })
+                        .width(Stretch(3.0));
+                }
+            });
+
+            // is valid
+            VStack::new(cx, |cx| {
+                Binding::new(cx, Data::last_input_is_valid, |cx, is_valid|{
+                    let is_valid = is_valid.get(cx);
+                    Label::new(cx, if is_valid { "✔️" } else { "❌" })
+                        .position_type(PositionType::Absolute)
+                        .top(Pixels(5.0))
+                        .left(Pixels(10.0));
+                });
+            });
         });
+
+        // Switching A & B
+        VStack::new(cx, |cx| {
+            HStack::new(cx, |cx| {
+                // Switch between A and B
+                Binding::new(cx, Data::display_b, |cx, display| {
+                    Button::new(cx,
+                                |cx|
+                                    if display.get(cx) {
+                                        Label::new(cx, "Switch to A")
+                                    } else {
+                                        Label::new(cx, "Switch to B")
+                                    }
+                    )
+                        .on_press(|cx| {
+                            cx.emit(MetreFiddlerEvent::ToggleAB)
+                        })
+                        .alignment(Alignment::Center);
+                });
+
+                Element::new(cx).width(Pixels(10.0));
+
+                // Interpolation
+                HStack::new(cx, |cx| {
+                    Label::new(cx, "A");
+
+                    Element::new(cx).width(Pixels(10.0));
+
+                    ParamSliderKnob::new(cx, Data::params, |params|
+                        &params.interpolate_a_b)
+                        .height(Pixels(20.0))
+                        .width(Pixels(100.0));
+
+                    Element::new(cx).width(Pixels(10.0));
+
+                    Label::new(cx, "B");
+                })
+                    .alignment(Alignment::Center);
+            })
+                .alignment(Alignment::Center)
+                .width(Pixels(300.0))
+                .height(Pixels(50.0));
+        })
+            .alignment(Alignment::TopCenter)
+            .height(Stretch(2.0));
     });
 }

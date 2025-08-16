@@ -19,7 +19,6 @@ crate-type = ["cdylib"]
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["assert_process_allocs"] }
 # Uncomment the below line to disable the on-by-default VST3 feature to remove
 # the GPL compatibility requirement
-# nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false, features = ["assert_process_allocs"] }
 # nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "d64b2ab9cfb94773c5ee4d0e72aef5921ee95d2d", package = "nih_plug_vizia" }
 vizia_plug = { git = "https://github.com/vizia/vizia-plug.git" }
 atomic_float = "0.1"
