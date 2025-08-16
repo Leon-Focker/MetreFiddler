@@ -20,8 +20,6 @@ use crate::metre_data::parse_input;
 // TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and
 //  sometimes it doesn't. (only on linux)
 
-// TODO is there a way to clean up the Data struct?
-
 pub const NOTO_SANS: &str = "Noto Sans";
 
 const PLUGIN_INFO_TEXT: &str = "     Below you can define a metric structure using RQQ notation, i.e. hierarchical
@@ -51,14 +49,14 @@ pub(crate) struct Data {
     pub(crate) params: Arc<MetreFiddlerParams>,
     pub(crate) text_input_a: String,
     pub(crate) text_input_b: String,
+    pub(crate) durations_a: Arc<Mutex<Vec<f32>>>,
+    pub(crate) durations_b: Arc<Mutex<Vec<f32>>>,
+    pub(crate) display_b: bool,
     pub(crate) last_input_is_valid: bool,
     pub(crate) max_threshold: usize,
     pub(crate) display_metre_info: bool,
-    pub(crate) display_b: bool,
     pub(crate) displayed_position: Arc<AtomicF32>,
     pub(crate) check_for_phase_reset_toggle: bool,   // this is toggled for every frame until the phase_reset button has been reset
-    pub(crate) durations_a: Arc<Mutex<Vec<f32>>>,
-    pub(crate) durations_b: Arc<Mutex<Vec<f32>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,9 +81,10 @@ impl Model for Data {
                         // parse String and send to Plugin
                         match parse_input(new_text) {
                             Ok(new_metre_data) => {
+                                let metre_data_a = self.params.metre_data_a.lock().unwrap();
                                 self.durations_b = Arc::new(Mutex::new(new_metre_data.durations.clone()));
                                 *metre_data = new_metre_data;
-                                self.max_threshold = metre_data.max;
+                                self.max_threshold = metre_data.max.max(metre_data_a.max);
                                 self.last_input_is_valid = true;
                             },
                             Err(err_string) => {
@@ -102,9 +101,10 @@ impl Model for Data {
                         // parse String and send to Plugin
                         match parse_input(new_text) {
                             Ok(new_metre_data) => {
+                                let metre_data_b = self.params.metre_data_b.lock().unwrap();
                                 self.durations_a = Arc::new(Mutex::new(new_metre_data.durations.clone()));
                                 *metre_data = new_metre_data;
-                                self.max_threshold = metre_data.max;
+                                self.max_threshold = metre_data.max.max(metre_data_b.max);
                                 self.last_input_is_valid = true;
                             },
                             Err(err_string) => {
@@ -170,7 +170,7 @@ pub(crate) fn create(
             text_input_a: metre_data_a.input.clone(),
             text_input_b: metre_data_b.input.clone(),
             last_input_is_valid: true,
-            max_threshold: metre_data_a.max.clone(), // TODO
+            max_threshold: metre_data_a.max.clone().max(metre_data_b.max.clone()),
             display_metre_info: false,
             display_b: false,
             displayed_position: params.displayed_position.clone(),
@@ -314,7 +314,7 @@ fn upper_part(cx: &mut Context) {
                 });
             });
             
-            Label::new(cx, "Threshold")
+            Label::new(cx, "Thresholds")
                 .font_weight(FontWeightKeyword::Bold)
                 .padding_bottom(Pixels(20.0));
         })
