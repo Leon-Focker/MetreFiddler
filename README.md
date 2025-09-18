@@ -16,6 +16,10 @@ The current position within a measure is determined either by the duration slide
 
 In the textbox, you can define a metric structure using RQQ notation. The onset of each beat defined this way is then shown on the position slider.
 
+This is an example usage of MetreFiddler together with [VelocityMapper](https://github.com/Leon-Focker/VelocityMapper) that maps an incoming stream of Midi notes to drum samples according to a metric structure and warps the beat by automating some ofe the parameters:
+
+https://github.com/user-attachments/assets/64b7fdbd-a32a-443a-833d-cf4d2dd834fc
+
 ## Building
 
 Precompiled binaries can be found in the [Releases tab](https://github.com/Leon-Focker/MetreFiddler/releases/)
