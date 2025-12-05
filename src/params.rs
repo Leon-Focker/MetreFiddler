@@ -55,6 +55,9 @@ pub struct MetreFiddlerParams {
     // Interpolate between A and B
     #[id = "interpolate_a_b"]
     pub interpolate_a_b: FloatParam,
+
+    #[id = "send_midi"]
+    pub send_midi: BoolParam,
 }
 
 impl Default for MetreFiddlerParams {
@@ -86,6 +89,11 @@ impl Default for MetreFiddlerParams {
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             )
                 .with_smoother(Linear(50.0)),
+
+            send_midi: BoolParam::new(
+                "Send midi notes instead",
+                false,
+            ),
 
             velocity_min: FloatParam::new(
                 "Minimum for the velocity output",
