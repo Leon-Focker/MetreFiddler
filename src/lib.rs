@@ -1,4 +1,3 @@
-use std::cmp::max;
 use nih_plug::prelude::*;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
@@ -53,31 +52,25 @@ impl Default for MetreFiddler {
 
 
 impl MetreFiddler {
-    fn update_parameters(&mut self) {
+    fn update_velocity_parameters(&mut self) {
         self.vel_min = self.params.velocity_min.value();
         self.vel_max = self.params.velocity_max.value();
         self.vel_skew = self.params.velocity_skew.value();
         self.lower_threshold = self.params.lower_threshold.value();
         self.upper_threshold = self.params.upper_threshold.value();
-        self.metric_duration = self.params.metric_dur_selector.value();
-        self.bar_pos = self.params.bar_position.value();
-        self.interpolate = self.params.interpolate_a_b.value();
     }
 
-    fn update_parameters_smoothed_with_step(&mut self, step: u32) {
+    fn update_velocity_parameters_smoothed_with_step(&mut self, step: u32) {
         self.vel_min = self.params.velocity_min.smoothed.next_step(step);
         self.vel_max = self.params.velocity_max.smoothed.next_step(step);
         self.vel_skew = self.params.velocity_skew.smoothed.next_step(step);
         self.lower_threshold = self.params.lower_threshold.smoothed.next_step(step);
         self.upper_threshold = self.params.upper_threshold.smoothed.next_step(step);
-        self.metric_duration = self.params.metric_dur_selector.smoothed.next_step(step);
-        self.bar_pos = self.params.bar_position.smoothed.next_step(step);
-        self.interpolate = self.params.interpolate_a_b.smoothed.next_step(step)
     }
 
     // Get the normalized time within a measure (between 0.0 and 1.0) depending on the current
     // progress_in_samples or the bar_pos.
-    fn get_normalized_position_in_bar(&mut self) -> f32 {
+    fn get_normalized_position_in_bar(&self) -> f32 {
         // Calculate the current time in seconds from the current progress_in_samples
         let time = self.progress_in_samples as f32 / self.sample_rate;
         // Get the normalized time within a measure (between 0.0 and 1.0)
@@ -268,13 +261,19 @@ impl Plugin for MetreFiddler {
 
                 // get all parameters for this event
                 if elapsed_samples > 0 {
-                    self.update_parameters_smoothed_with_step(elapsed_samples)
+                    self.update_velocity_parameters_smoothed_with_step(elapsed_samples);
+                    self.metric_duration = self.params.metric_dur_selector.smoothed.next_step(elapsed_samples);
+                    self.bar_pos = self.params.bar_position.smoothed.next_step(elapsed_samples);
+                    self.interpolate = self.params.interpolate_a_b.smoothed.next_step(elapsed_samples);
                 } else {
-                    self.update_parameters()
+                    self.update_velocity_parameters();
+                    self.metric_duration = self.params.metric_dur_selector.value();
+                    self.bar_pos = self.params.bar_position.value();
+                    self.interpolate = self.params.interpolate_a_b.value();
                 }
 
                 if self.params.use_bpm.value() {
-                    self.set_metric_duration(context.transport().tempo);
+                    self.set_metric_duration_for_bpm(context.transport().tempo);
                 }
 
                 match event {
@@ -299,38 +298,51 @@ impl Plugin for MetreFiddler {
             elapsed_samples = buffer_len as u32 - current_sample;
             self.progress_in_samples += elapsed_samples as u64;
             // update all parameters once again
-            self.update_parameters_smoothed_with_step(elapsed_samples);
+            self.update_velocity_parameters_smoothed_with_step(elapsed_samples);
+            self.metric_duration = self.params.metric_dur_selector.smoothed.next_step(elapsed_samples);
+            self.bar_pos = self.params.bar_position.smoothed.next_step(elapsed_samples);
+            self.interpolate = self.params.interpolate_a_b.smoothed.next_step(elapsed_samples);
         } else {
             // Since the metric duration might change while doing this, maybe it's easiest to just
             // loop through all samples and individually check, whether we want to send a note.
             // TODO do it twice for a and b, then interpolate between the midi events...
+            // TODO what about using bar_position??
 
-            let metric_data_a = &self.params.metre_data_a.lock().unwrap();
-            let metric_durations_a = &metric_data_a.durations;
-            let indisp_ls_a = &metric_data_a.value;
+            let nr_samples_for_start_of_beat: u64 = 100;
 
             for timing in 0..buffer_len {
-                // TODO I dont like this... but we want metric_duration to be accurate.
-                self.update_parameters_smoothed_with_step(1);
+                self.update_velocity_parameters_smoothed_with_step(1);
+                // TODO this can be done somewhere else and less often
+                self.metric_duration = self.params.metric_dur_selector.smoothed.next_step(1);
+                self.bar_pos = self.params.bar_position.smoothed.next_step(1);
+                self.interpolate = self.params.interpolate_a_b.smoothed.next_step(1);
+
+                let metric_data_a = &self.params.metre_data_a.lock().unwrap();
+                let metric_durations_a = &metric_data_a.durations;
+                let indisp_ls_a = &metric_data_a.value;
 
                 let current_beat_idx =
                     if let Ok(idx) = decider(self.get_normalized_position_in_bar(), metric_durations_a) {
                     idx as i32
                 } else { 0 };
-                let beat_first_sample =
-                    &metric_durations_a[0..current_beat_idx as usize].iter().sum()
+                let beat_first_sample: u64 =
+                    (&metric_durations_a[0..current_beat_idx as usize].iter().sum()
                         * self.metric_duration
-                        * self.sample_rate;
+                        * self.sample_rate)
+                        .floor() as u64;
 
+                // Send midi when we haven't already sent a note for this idx and we're
+                // at the beginning of a new beat (within 100 samples).
                 if self.last_sent_beat_idx != current_beat_idx
-                    && self.progress_in_samples.rem_euclid(self.metric_duration) - beat_first_sample < 10 {
+                    && self.progress_in_samples.rem_euclid((self.metric_duration * self.sample_rate).floor() as u64)
+                    - beat_first_sample < nr_samples_for_start_of_beat {
 
                     // Get the actual indispensability value from the vector
-                    let indisp_val = indisp_ls_a[current_beat_idx];
+                    let indisp_val = indisp_ls_a[current_beat_idx as usize];
 
                     context.send_event(
                         NoteEvent::NoteOn {
-                            timing,
+                            timing: timing as u32,
                             velocity: self.calculate_current_velocity(indisp_val),
                             channel: 0,
                             note: 60,
@@ -338,13 +350,17 @@ impl Plugin for MetreFiddler {
                         });
                     context.send_event(
                         NoteEvent::NoteOff {
-                            timing: timing + 0.1 * self.sample_rate,
+                            timing: timing as u32 + (0.1 * self.sample_rate).floor() as u32,
                             voice_id: None,
                             channel: 0,
                             note: 60,
                             velocity: 0.0,
                         }
                     );
+                } else {
+                    // We might want to send another midi note for the same beat_idx when the metric
+                    // duration changes rapidly, thus reset this.
+                    self.last_sent_beat_idx = -1
                 }
 
                 self.progress_in_samples += 1;
