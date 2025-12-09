@@ -1,8 +1,10 @@
 use nih_plug::prelude::*;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
+use nih_plug::wrapper::setup_logger;
 use crate::params::MetreFiddlerParams;
 use crate::util::{decider, rescale};
+use nih_log;
 
 mod editor;
 mod metre_data;
@@ -17,6 +19,8 @@ struct MetreFiddler {
     progress_in_samples: u64,
     last_reset_phase_value: bool,
     last_sent_beat_idx: i32,
+    note_off_buffer: Vec<i64>,
+    was_playing: bool,
 
     // TODO these should not be necessary, because they are just parameters:
     vel_min: f32,
@@ -37,6 +41,8 @@ impl Default for MetreFiddler {
             sample_rate: 1.0,
             last_reset_phase_value: false,
             last_sent_beat_idx: -1,
+            note_off_buffer: vec![-1, -1, -1, -1],
+            was_playing: false,
             metric_duration: 1.0,
             progress_in_samples: 0,
             vel_min: 0.0,
@@ -52,6 +58,17 @@ impl Default for MetreFiddler {
 
 
 impl MetreFiddler {
+
+    fn maybe_reset_progress(&mut self, is_playing: bool) {
+        if !is_playing && self.was_playing {
+            self.progress_in_samples = 0;
+            self.was_playing = false;
+        } else if is_playing && !self.was_playing {
+            self.was_playing = true;
+            self.last_sent_beat_idx = -1;
+        }
+    }
+
     fn update_velocity_parameters(&mut self) {
         self.vel_min = self.params.velocity_min.value();
         self.vel_max = self.params.velocity_max.value();
@@ -224,15 +241,11 @@ impl Plugin for MetreFiddler {
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
-    ) -> ProcessStatus {        
+    ) -> ProcessStatus {
+        let nr_samples_for_start_of_beat: u64 = 100; // TODO this should be a constant
         let mut current_sample: u32 = 0;
         let buffer_len = buffer.samples();
         let process_events: bool = !self.params.send_midi.value();
-
-        // reset progress when playback stops.
-        if !context.transport().playing {
-            self.progress_in_samples = 0;
-        }
 
         // Handle the reset_phase button:
         // automated value
@@ -251,11 +264,15 @@ impl Plugin for MetreFiddler {
             let mut last_note_was_let_through = true;
             let mut elapsed_samples: u32;
 
+            // reset progress when playback stops. // TODO maybe do this for every sample, not once per bufffer?
+            // TODO reset counter when self.was_playing=true and is_playing=false, only progress when is_playing...
+            self.maybe_reset_progress(context.transport().playing);
+
             // handle all incoming events
             while let Some(event) = context.next_event() {
                 // samples since last event
                 elapsed_samples = event.timing() - current_sample;
-                // update progress
+                // update progress // TODO only when playing?
                 self.progress_in_samples += elapsed_samples as u64;
                 current_sample += elapsed_samples;
 
@@ -303,19 +320,19 @@ impl Plugin for MetreFiddler {
             self.bar_pos = self.params.bar_position.smoothed.next_step(elapsed_samples);
             self.interpolate = self.params.interpolate_a_b.smoothed.next_step(elapsed_samples);
         } else {
+            // TODO do it twice for a and b, then interpolate between the midi events...
+
             // Since the metric duration might change while doing this, maybe it's easiest to just
             // loop through all samples and individually check, whether we want to send a note.
-            // TODO do it twice for a and b, then interpolate between the midi events...
-            // TODO what about using bar_position??
-
-            let nr_samples_for_start_of_beat: u64 = 100;
-
             for timing in 0..buffer_len {
-                self.update_velocity_parameters_smoothed_with_step(1);
-                // TODO this can be done somewhere else and less often
+                // reset progress when not playing
+                self.maybe_reset_progress(context.transport().playing);
+
                 self.metric_duration = self.params.metric_dur_selector.smoothed.next_step(1);
                 self.bar_pos = self.params.bar_position.smoothed.next_step(1);
                 self.interpolate = self.params.interpolate_a_b.smoothed.next_step(1);
+                // TODO this can be done somewhere else and less often
+                self.update_velocity_parameters_smoothed_with_step(1);
 
                 let metric_data_a = &self.params.metre_data_a.lock().unwrap();
                 let metric_durations_a = &metric_data_a.durations;
@@ -323,47 +340,77 @@ impl Plugin for MetreFiddler {
 
                 let current_beat_idx =
                     if let Ok(idx) = decider(self.get_normalized_position_in_bar(), metric_durations_a) {
+                        nih_dbg!(idx);
                     idx as i32
                 } else { 0 };
+                nih_dbg!(current_beat_idx);
+
                 let beat_first_sample: u64 =
                     (&metric_durations_a[0..current_beat_idx as usize].iter().sum()
                         * self.metric_duration
                         * self.sample_rate)
                         .floor() as u64;
 
-                // Send midi when we haven't already sent a note for this idx and we're
-                // at the beginning of a new beat (within 100 samples).
-                if self.last_sent_beat_idx != current_beat_idx
-                    && self.progress_in_samples.rem_euclid((self.metric_duration * self.sample_rate).floor() as u64)
-                    - beat_first_sample < nr_samples_for_start_of_beat {
+                let nth_sample_in_bar: u64 = (self.get_normalized_position_in_bar()
+                    * self.metric_duration
+                    * self.sample_rate)
+                    .floor() as u64;
 
-                    // Get the actual indispensability value from the vector
-                    let indisp_val = indisp_ls_a[current_beat_idx as usize];
+                let nth_sample_of_beat: u64 = nth_sample_in_bar.saturating_sub(beat_first_sample);
 
-                    context.send_event(
-                        NoteEvent::NoteOn {
-                            timing: timing as u32,
-                            velocity: self.calculate_current_velocity(indisp_val),
-                            channel: 0,
-                            note: 60,
-                            voice_id: None
-                        });
+                // Are we at the beginning of a beat?
+                if nth_sample_of_beat < nr_samples_for_start_of_beat {
+                    // Send midi when we haven't already sent a note for this idx
+                    if self.last_sent_beat_idx != current_beat_idx {
+                        // Get the actual indispensability value from the vector
+                        let indisp_val = indisp_ls_a[current_beat_idx as usize];
+                        let vel =  self.calculate_current_velocity(indisp_val);
+
+                        nih_dbg!(indisp_val);
+                        nih_dbg!(vel);
+                        nih_dbg!(nth_sample_of_beat);
+                        nih_dbg!(current_beat_idx);
+                        nih_dbg!(timing);
+
+                        context.send_event(
+                            NoteEvent::NoteOn {
+                                timing: timing as u32,
+                                velocity: vel,
+                                channel: 0,
+                                note: 60,
+                                voice_id: None
+                            });
+
+                        self.last_sent_beat_idx = current_beat_idx;
+
+                        // send a Note Off into self.note_off_buffer
+                        if let Some(place) = self.note_off_buffer.iter_mut().find(|&&mut x| x<0) {
+                            *place = timing as i64 + (0.1 * self.sample_rate).floor() as i64
+                        }
+                    }
+                } else {
+                    self.last_sent_beat_idx = -1
+                }
+
+                if context.transport().playing {
+                    self.progress_in_samples += 1;
+                }
+            }
+            // Handle Note Offs
+            for delay in self.note_off_buffer.iter_mut() {
+                if *delay >= buffer_len as i64 {
+                    *delay -= buffer_len as i64
+                } else if *delay >= 0 {
                     context.send_event(
                         NoteEvent::NoteOff {
-                            timing: timing as u32 + (0.1 * self.sample_rate).floor() as u32,
+                            timing: *delay as u32,
                             voice_id: None,
                             channel: 0,
                             note: 60,
                             velocity: 0.0,
-                        }
-                    );
-                } else {
-                    // We might want to send another midi note for the same beat_idx when the metric
-                    // duration changes rapidly, thus reset this.
-                    self.last_sent_beat_idx = -1
+                        });
+                    *delay = -1
                 }
-
-                self.progress_in_samples += 1;
             }
         }
 
