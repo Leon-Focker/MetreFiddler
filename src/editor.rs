@@ -407,28 +407,27 @@ fn duration_position(cx: &mut Context) {
                 .alignment(Alignment::Center);
             
             ZStack::new(cx, |cx| {
+                // The ticks on the position bar
                 VStack::new(cx, |cx| {
-                    Binding::new(cx, Data::display_b, |cx, display_b| {
-                        if display_b.get(cx) {
-                            Binding::new(cx, Data::durations_b, |cx, durs| {
-                                ParamTicks::new(
-                                    cx,
-                                    durs
-                                        .map(|durations| durations.lock().unwrap().clone()))
-                                    .width(Pixels(200.0))
-                                    .height(Pixels(20.0));
-                            });
-                        } else {
-                            Binding::new(cx, Data::durations_a, |cx, durs| {
-                                ParamTicks::new(
-                                    cx,
-                                    durs
-                                        .map(|durations| durations.lock().unwrap().clone()))
-                                    .width(Pixels(200.0))
-                                    .height(Pixels(20.0));
-                            });
-                        }
-                    });
+                    ParamBinding::new(
+                        cx,
+                        Data::params,
+                        |params| &params.interpolate_a_b,
+                        |cx, interpolate| {
+                            Binding::new(cx, Data::durations_a, move |cx, durs_a | {
+                                Binding::new(cx, Data::durations_b, move |cx, durs_b | {
+                                    ParamTicks::new(
+                                        cx,
+                                        durs_a
+                                            .map(|durations| durations.lock().unwrap().clone()),
+                                        durs_b
+                                            .map(|durations| durations.lock().unwrap().clone()),
+                                        interpolate)
+                                        .width(Pixels(200.0))
+                                        .height(Pixels(20.0));
+                                });
+                            })
+                        }).alignment(Alignment::Center);
                 })
                     .alignment(Alignment::Center);
                 

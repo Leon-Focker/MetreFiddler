@@ -1,15 +1,21 @@
 use vizia_plug::vizia::prelude::*;
+use std::vec;
+
+use crate::util::dry_wet;
 
 #[derive(Lens)]
 pub struct ParamTicks {}
 
 impl ParamTicks {
-    pub fn new<L>(
+    pub fn new<L,M>(
         cx: &mut Context,
-        durations: L,
+        durations_a: L,
+        durations_b: M,
+        interpolate: f32,
     ) -> Handle<Self>
     where
-        L: Lens<Target = Vec<f32>>
+        L: Lens<Target = Vec<f32>>,
+        M: Lens<Target = Vec<f32>>,
     {
         Self {}
             .build(
@@ -17,7 +23,9 @@ impl ParamTicks {
                 |cx| {
                     Self::ticks(
                         cx,
-                        durations,
+                        durations_a,
+                        durations_b,
+                        interpolate,
                     );
                 }
             )
@@ -26,17 +34,25 @@ impl ParamTicks {
     
     fn ticks(
         cx: &mut Context,
-        durations: impl Lens<Target = Vec<f32>>,
-    ) {                
+        durations_a: impl Lens<Target = Vec<f32>>,
+        durations_b: impl Lens<Target = Vec<f32>>,
+        interpolate: f32,
+    ) {
+        let max_len = durations_a.get(cx).len().max(durations_b.get(cx).len());
+
         HStack::new(cx, |cx| {
             Element::new(cx)
                 .background_color(Color::black())
                 .width(Pixels(1.0))
                 .height(Pixels(10.0));
 
-            for dur in durations.get(cx) {
+            for i in 0..max_len {
+                // cannot use .get() because the lens impl overloads it....?
+                let dur_a = *durations_a.get(cx).iter().nth(i).unwrap_or(&0.0);
+                let dur_b = *durations_b.get(cx).iter().nth(i).unwrap_or(&0.0);
+
                 Element::new(cx)
-                    .width(Stretch(dur))
+                    .width(Stretch(dry_wet(dur_a, dur_b, interpolate)))// TODO
                     .height(Pixels(10.0));
 
                 Element::new(cx)
