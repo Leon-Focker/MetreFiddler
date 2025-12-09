@@ -1,5 +1,4 @@
 use vizia_plug::vizia::prelude::*;
-use std::vec;
 
 use crate::util::dry_wet;
 
@@ -52,7 +51,7 @@ impl ParamTicks {
                 let dur_b = *durations_b.get(cx).iter().nth(i).unwrap_or(&0.0);
 
                 Element::new(cx)
-                    .width(Stretch(dry_wet(dur_a, dur_b, interpolate)))// TODO
+                    .width(Stretch(dry_wet(dur_a, dur_b, interpolate)))
                     .height(Pixels(10.0));
 
                 Element::new(cx)
