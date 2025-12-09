@@ -1,7 +1,6 @@
 use nih_plug::prelude::*;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
-use nih_plug::wrapper::setup_logger;
 use crate::params::MetreFiddlerParams;
 use crate::util::{decider, rescale};
 use nih_log;
@@ -340,10 +339,8 @@ impl Plugin for MetreFiddler {
 
                 let current_beat_idx =
                     if let Ok(idx) = decider(self.get_normalized_position_in_bar(), metric_durations_a) {
-                        nih_dbg!(idx);
                     idx as i32
                 } else { 0 };
-                nih_dbg!(current_beat_idx);
 
                 let beat_first_sample: u64 =
                     (&metric_durations_a[0..current_beat_idx as usize].iter().sum()
@@ -365,12 +362,6 @@ impl Plugin for MetreFiddler {
                         // Get the actual indispensability value from the vector
                         let indisp_val = indisp_ls_a[current_beat_idx as usize];
                         let vel =  self.calculate_current_velocity(indisp_val);
-
-                        nih_dbg!(indisp_val);
-                        nih_dbg!(vel);
-                        nih_dbg!(nth_sample_of_beat);
-                        nih_dbg!(current_beat_idx);
-                        nih_dbg!(timing);
 
                         context.send_event(
                             NoteEvent::NoteOn {
