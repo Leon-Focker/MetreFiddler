@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use std::iter::Sum;
-use num_traits::{AsPrimitive, FromPrimitive, Num, ToPrimitive};
+use num_traits::{Num, NumCast};
 
 ///  Given a value within an original range, return its value within a new range.
 ///
@@ -72,11 +72,22 @@ fn decider_aux<T: Num + PartialOrd + Copy + Debug>(selector: T, ls1: &[T], index
     }
 }
 
-pub fn dry_wet<T>(dry: T, wet: T, mix: f32) -> T
-    where
-        T: Num + From<f32>,
-        f32: From<T>,
-{
-    let clamped_mix = mix.clamp(0.0, 1.0);
-    (f32::from(dry) * (1.0 - clamped_mix) + f32::from(wet) * clamped_mix).into()
+pub fn dry_wet<T: NumCast + Copy>(dry: T, wet: T, mix: f32) -> f32 {
+    let mix = mix.clamp(0.0, 1.0);
+
+    let dry = NumCast::from(dry).unwrap_or(0.0_f32);
+    let wet = NumCast::from(wet).unwrap_or(0.0_f32);
+
+    dry * (1.0 - mix) + wet * mix
+}
+
+pub fn interpolate_vectors<T: NumCast + Copy + num_traits::Zero>(vec_a: &[T], vec_b: &[T], interpolation: f32) -> Vec<f32> {
+    let max_len = vec_a.len().max(vec_b.len());
+    let mut result = Vec::with_capacity(max_len);
+
+    for i in 0..max_len {
+        result[i] = dry_wet(*vec_a.get(i).unwrap_or(&T::zero()), *vec_b.get(i).unwrap_or(&T::zero()), interpolation)
+    }
+
+    result
 }
