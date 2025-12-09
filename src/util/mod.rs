@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use std::iter::Sum;
-use num_traits::Num;
+use num_traits::{AsPrimitive, FromPrimitive, Num, ToPrimitive};
 
 ///  Given a value within an original range, return its value within a new range.
 ///
@@ -70,4 +70,13 @@ fn decider_aux<T: Num + PartialOrd + Copy + Debug>(selector: T, ls1: &[T], index
     } else {
         decider_aux(selector, &ls1[1..], index + T::one(), sum + ls1[0])
     }
+}
+
+pub fn dry_wet<T>(dry: T, wet: T, mix: f32) -> T
+    where
+        T: Num + From<f32>,
+        f32: From<T>,
+{
+    let clamped_mix = mix.clamp(0.0, 1.0);
+    (f32::from(dry) * (1.0 - clamped_mix) + f32::from(wet) * clamped_mix).into()
 }
