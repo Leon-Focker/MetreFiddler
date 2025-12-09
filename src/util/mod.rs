@@ -30,7 +30,9 @@ pub fn rescale<T: Num + PartialOrd + Copy + Debug>(
                 min                
             } else if val >= max { 
                 max
-            } else { val };
+            } else {
+                val
+            };
         } else {
             return Err("rescale: value out of range!")
         }
@@ -55,12 +57,12 @@ pub fn rescale<T: Num + PartialOrd + Copy + Debug>(
 ///
 /// assert_eq!(element, 'b');
 /// ```
-pub fn decider<T: Num + PartialOrd + Copy + Debug + Sum<T>>(selector: T, weights: &[T]) -> Result<T, String> {
-    let selector: T = rescale(selector, T::zero(), T::one(), T::zero(), weights.iter().copied().sum(), false)?;
+pub fn decider<T: Num + PartialOrd + Copy + Debug + Sum<T>>(selector: T, weights: &[T]) -> Result<T, &'static str> {
+    let selector: T = rescale(selector, T::zero(), T::one(), T::zero(), weights.iter().copied().sum(), true)?;
     decider_aux(selector, &weights[1..], T::zero(), weights[0])
 }
 
-fn decider_aux<T: Num + PartialOrd + Copy + Debug>(selector: T, ls1: &[T], index: T, sum: T) -> Result<T, String> {
+fn decider_aux<T: Num + PartialOrd + Copy + Debug>(selector: T, ls1: &[T], index: T, sum: T) -> Result<T, &'static str> {
     if ls1.is_empty() {
         Ok(index)
     } else if selector < sum {
