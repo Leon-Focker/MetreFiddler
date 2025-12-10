@@ -346,6 +346,7 @@ impl Plugin for MetreFiddler {
                     let dur = dry_wet(dur_a, dur_b, self.interpolate);
                     current_duration_sum += dur;
                     if current_beat_idx >= max_len || current_duration_sum >= self.get_normalized_position_in_bar() {
+                        current_duration_sum -= dur;
                         break
                     } else {
                         current_beat_idx += 1;
