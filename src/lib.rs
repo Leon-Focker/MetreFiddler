@@ -18,7 +18,7 @@ struct MetreFiddler {
     progress_in_samples: u64,
     last_reset_phase_value: bool,
     last_sent_beat_idx: i32,
-    note_off_buffer: Vec<i64>,
+    note_off_buffer: Vec<(u8, i64)>,
     was_playing: bool,
 
     // TODO these should not be necessary, because they are just parameters:
@@ -40,7 +40,7 @@ impl Default for MetreFiddler {
             sample_rate: 1.0,
             last_reset_phase_value: false,
             last_sent_beat_idx: -1,
-            note_off_buffer: vec![-1, -1, -1, -1],
+            note_off_buffer: vec![(0, -1), (0, -1), (0, -1), (0, -1)],
             was_playing: false,
             metric_duration: 1.0,
             progress_in_samples: 0,
@@ -319,8 +319,6 @@ impl Plugin for MetreFiddler {
             self.bar_pos = self.params.bar_position.smoothed.next_step(elapsed_samples);
             self.interpolate = self.params.interpolate_a_b.smoothed.next_step(elapsed_samples);
         } else {
-            // TODO do it twice for a and b, then interpolate between the midi events...
-
             // Since the metric duration might change while doing this, maybe it's easiest to just
             // loop through all samples and individually check, whether we want to send a note.
             for sample in 0..buffer_len {
@@ -366,7 +364,7 @@ impl Plugin for MetreFiddler {
 
                 let nth_sample_of_beat: u64 = nth_sample_in_bar.saturating_sub(beat_first_sample);
 
-                // Are we at the beginning of a beat? // TODO this doesn't really work somehow?
+                // Are we at the beginning of a beat?
                 if nth_sample_of_beat < NR_SAMPLES_FOR_START_OF_BEAT {
                     // Send midi when we haven't already sent a note for this idx
                     if self.last_sent_beat_idx != current_beat_idx as i32 {
@@ -377,21 +375,23 @@ impl Plugin for MetreFiddler {
                             self.interpolate)
                             .floor() as usize;
                         let vel =  self.calculate_current_velocity(indisp_val);
+                        let note = 60 + indisp_val as u8;
 
                         context.send_event(
                             NoteEvent::NoteOn {
                                 timing: sample as u32,
                                 velocity: vel,
                                 channel: 0,
-                                note: 60,
+                                note,
                                 voice_id: None
                             });
 
                         self.last_sent_beat_idx = current_beat_idx as i32;
 
                         // send a Note Off into self.note_off_buffer
-                        if let Some(place) = self.note_off_buffer.iter_mut().find(|&&mut x| x<0) {
-                            *place = sample as i64 + (0.1 * self.sample_rate).floor() as i64
+                        if let Some((n, delay)) = self.note_off_buffer.iter_mut().find(|&&mut (x, y)| y<0) {
+                            *delay = sample as i64 + (0.1 * self.sample_rate).floor() as i64;
+                            *n = note;
                         }
                     }
                 } else {
@@ -403,7 +403,7 @@ impl Plugin for MetreFiddler {
                 }
             }
             // Handle Note Offs
-            for delay in self.note_off_buffer.iter_mut() {
+            for (note, delay) in self.note_off_buffer.iter_mut() {
                 if *delay >= buffer_len as i64 {
                     *delay -= buffer_len as i64
                 } else if *delay >= 0 {
@@ -412,7 +412,7 @@ impl Plugin for MetreFiddler {
                             timing: *delay as u32,
                             voice_id: None,
                             channel: 0,
-                            note: 60,
+                            note: *note,
                             velocity: 0.0,
                         });
                     *delay = -1
