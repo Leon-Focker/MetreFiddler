@@ -1,3 +1,4 @@
+use std::cmp::max;
 use nih_plug::prelude::*;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
@@ -127,53 +128,49 @@ impl MetreFiddler {
         }
     }
 
+    /// return a tuple with the index of the current beat, the normalized duration up until that beat,
+    /// the indispensability value for that beat and whether the thresholds would currently let
+    /// a note through.
+    fn get_current_indisp_data(&self) -> (usize, f32, usize, bool) {
+        let metric_data_a = &self.params.metre_data_a.lock().unwrap();
+        let metric_data_b = &self.params.metre_data_b.lock().unwrap();
+        let max_len = metric_data_a.durations.len().max(metric_data_b.durations.len());
+
+        let mut current_beat_duration_sum: f32 = 0.0;
+        let mut current_beat_idx: usize = 0;
+
+        // do this instead of using decider(), so that we can interpolate the start times of
+        // two metric definitions without memory alloc.
+        loop {
+            let dur_a = *metric_data_a.durations.get(current_beat_idx).unwrap_or(&0.0);
+            let dur_b = *metric_data_b.durations.get(current_beat_idx).unwrap_or(&0.0);
+            let dur = dry_wet(dur_a, dur_b, self.interpolate);
+            current_beat_duration_sum += dur;
+            if current_beat_idx >= max_len || current_beat_duration_sum >= self.get_normalized_position_in_bar() {
+                current_beat_duration_sum -= dur;
+                break
+            } else {
+                current_beat_idx += 1;
+            }
+        };
+
+        let indisp_val: usize = dry_wet(
+            *metric_data_a.value.get(current_beat_idx).unwrap_or(&0),
+            *metric_data_b.value.get(current_beat_idx).unwrap_or(&0),
+            self.interpolate)
+            .ceil() as usize; // TODO decide if round or ceil (ceil prevents duplicates better...?)
+
+        (current_beat_idx,
+         current_beat_duration_sum,
+         indisp_val,
+         self.is_indisp_val_within_thresholds(indisp_val, max_len - 1))
+    }
+
     /// Get a MIDI event and either return none (filter it) or return it with a new velocity
     /// value (according to the current metric position).
     fn process_event<S: SysExMessage>(&mut self, event: NoteEvent<S>) -> Option<NoteEvent<S>> {
-        let time_in_bar_normalized = self.get_normalized_position_in_bar();
-
-        let indisp_val: usize;
-        let max: usize;
-
-        let interpol = self.interpolate;
-        if interpol == 0.0 || interpol == 1.0 {
-            let metric_data = if interpol == 0.0 {
-                &self.params.metre_data_a.lock().unwrap()
-            } else {
-                &self.params.metre_data_b.lock().unwrap()
-            };
-            let metric_durations = &metric_data.durations;
-            let indisp_ls = &metric_data.value;
-            max = indisp_ls.len() - 1;
-
-            // Get the index of the current indispensability value
-            let indisp_idx: usize = if let Ok(idx) = decider(time_in_bar_normalized, &metric_durations) {
-                idx as usize
-            } else { 0 };
-            // Get the actual indispensability value from the vector
-            indisp_val = indisp_ls[indisp_idx];
-        } else {
-            let metric_data_a = &self.params.metre_data_a.lock().unwrap();
-            let metric_data_b = &self.params.metre_data_b.lock().unwrap();
-            let metric_durations_a = &metric_data_a.durations;
-            let metric_durations_b = &metric_data_b.durations;
-            let indisp_ls_a = &metric_data_a.value;
-            let indisp_ls_b = &metric_data_b.value;
-            max = (indisp_ls_a.len() - 1).max(indisp_ls_b.len() - 1);
-
-            // Get the index of the current indispensability value
-            let indisp_idx_a: usize = if let Ok(idx) = decider(time_in_bar_normalized, &metric_durations_a) {
-                idx as usize
-            } else { 0 };
-            let indisp_idx_b: usize = if let Ok(idx) = decider(time_in_bar_normalized, &metric_durations_b) {
-                idx as usize
-            } else { 0 };
-            // Get the actual indispensability value from the vector
-            indisp_val = ((indisp_ls_a[indisp_idx_a] as f32 * (1.0 - interpol))
-                +(indisp_ls_b[indisp_idx_b] as f32 * interpol))
-                .ceil() as usize; // TODO decide if round or ceil (ceil prevents duplicates better...?)
-        }
-
+        // TODO interpolation between A and B should match send midi
+        let (_,_, indisp_val, let_through) = self.get_current_indisp_data();
         let vel: f32 = self.calculate_current_velocity(indisp_val);
 
         // Return new MIDI event (or None)
@@ -184,7 +181,7 @@ impl MetreFiddler {
                 channel,
                 note,
                 ..
-            } => { if self.is_indisp_val_within_thresholds(indisp_val, max) {
+            } => { if let_through {
                 Some(NoteEvent::NoteOn {
                     timing,
                     voice_id,
@@ -263,7 +260,7 @@ impl Plugin for MetreFiddler {
         self.last_reset_phase_value = self.params.reset_phase.value();
 
         // either process events or send some
-        // TODO is it possible to process evens while sending them also??
+        // TODO is it possible to process events while sending them also??
         if process_events {
             let mut last_note_was_let_through = true;
             let mut elapsed_samples: u32;
@@ -340,28 +337,10 @@ impl Plugin for MetreFiddler {
                     self.set_metric_duration_for_bpm(context.transport().tempo);
                 }
 
-                // TODO would love to retrieve this just once every buffer but we're also borrowing self mutably...
-                let metric_data_a = &self.params.metre_data_a.lock().unwrap();
-                let metric_data_b = &self.params.metre_data_b.lock().unwrap();
-                let max_len = metric_data_a.durations.len().max(metric_data_b.durations.len());
-
-                let mut current_beat_idx: usize = 0;
-                let mut current_duration_sum = 0.0;
-                loop {
-                    let dur_a = *metric_data_a.durations.get(current_beat_idx).unwrap_or(&0.0);
-                    let dur_b = *metric_data_b.durations.get(current_beat_idx).unwrap_or(&0.0);
-                    let dur = dry_wet(dur_a, dur_b, self.interpolate);
-                    current_duration_sum += dur;
-                    if current_beat_idx >= max_len || current_duration_sum >= self.get_normalized_position_in_bar() {
-                        current_duration_sum -= dur;
-                        break
-                    } else {
-                        current_beat_idx += 1;
-                    }
-                };
+                let (current_beat_idx, current_beat_duration_sum, indisp_val, let_through) = self.get_current_indisp_data();
 
                 let beat_first_sample: u64 =
-                    (current_duration_sum
+                    (current_beat_duration_sum
                         * self.metric_duration
                         * self.sample_rate)
                         .floor() as u64;
@@ -376,43 +355,30 @@ impl Plugin for MetreFiddler {
                 // Are we at the beginning of a beat?
                 if nth_sample_of_beat < NR_SAMPLES_FOR_START_OF_BEAT {
                     // Send midi when we haven't already sent a note for this idx
-                    if self.last_sent_beat_idx != current_beat_idx as i32 {
-                        // Get the actual indispensability value from the vector
-                        let indisp_val: usize = dry_wet(
-                            *metric_data_a.value.get(current_beat_idx).unwrap_or(&0),
-                            *metric_data_b.value.get(current_beat_idx).unwrap_or(&0),
-                            self.interpolate)
-                            .ceil() as usize; // TODO decide if round or ceil (ceil prevents duplicates better...?)
-                        let max = (metric_data_a.value.len() - 1).max(metric_data_b.value.len() - 1);
+                    if self.last_sent_beat_idx != current_beat_idx as i32 && let_through {
+                        let vel =  self.calculate_current_velocity(indisp_val);
+                        let note = 60 + indisp_val as u8;
 
-                        // check thresholds...
-                        if self.is_indisp_val_within_thresholds(indisp_val, max) {
+                        context.send_event(
+                            NoteEvent::NoteOn {
+                                timing: sample as u32,
+                                velocity: vel,
+                                channel: 0,
+                                note,
+                                voice_id: None
+                            });
 
-                            let vel =  self.calculate_current_velocity(indisp_val);
-                            let note = 60 + indisp_val as u8;
+                        self.last_sent_beat_idx = current_beat_idx as i32;
 
-                            context.send_event(
-                                NoteEvent::NoteOn {
-                                    timing: sample as u32,
-                                    velocity: vel,
-                                    channel: 0,
-                                    note,
-                                    voice_id: None
-                                });
-
-                            self.last_sent_beat_idx = current_beat_idx as i32;
-
-                            // send a Note Off into self.note_off_buffer
-                            if let Some((n, delay)) = self.note_off_buffer.iter_mut().find(|&&mut (_, y)| y<0) {
-                                *delay = sample as i64 + (0.1 * self.sample_rate).floor() as i64;
-                                *n = note;
-                            }
+                        // send a Note Off into self.note_off_buffer
+                        if let Some((n, delay)) = self.note_off_buffer.iter_mut().find(|&&mut (_, y)| y<0) {
+                            *delay = sample as i64 + (0.1 * self.sample_rate).floor() as i64;
+                            *n = note;
                         }
                     }
                 } else {
                     self.last_sent_beat_idx = -1
                 }
-
                 if context.transport().playing {
                     self.progress_in_samples += 1;
                 }
