@@ -1,3 +1,4 @@
+use std::fmt::Alignment::Center;
 use nih_plug::prelude::{Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
@@ -509,8 +510,19 @@ fn lower_part(cx: &mut Context) {
             });
         });
 
-        // Switching A & B
-        VStack::new(cx, |cx| {
+        HStack::new(cx, |cx| {
+            // Send Midi Events?
+            VStack::new(cx, |cx| {
+                ParamButton::new(cx, Data::params, |params| &params.send_midi)
+                    .alignment(Alignment::Center)
+                    .with_label("Send Midi")
+                    .class("red_button")
+                    .width(Pixels(80.0));
+            })
+                .height(Pixels(50.0))
+                .alignment(Alignment::Center);
+
+            // Switching A & B
             HStack::new(cx, |cx| {
                 // Switch between A and B
                 Binding::new(cx, Data::display_b, |cx, display| {
@@ -548,8 +560,11 @@ fn lower_part(cx: &mut Context) {
                     .alignment(Alignment::Center);
             })
                 .alignment(Alignment::Center)
-                .width(Pixels(300.0))
+                .width(Stretch(3.0))
                 .height(Pixels(50.0));
+
+            // This is just for spacing
+            Element::new(cx);
         })
             .alignment(Alignment::TopCenter)
             .height(Stretch(2.0));
