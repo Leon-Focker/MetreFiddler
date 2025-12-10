@@ -68,6 +68,11 @@ impl MetreFiddler {
         }
     }
 
+    fn is_indisp_val_within_thresholds(&self, indisp_val: usize, max_indisp_val: usize) -> bool {
+        indisp_val >= (self.lower_threshold.min(self.upper_threshold) * max_indisp_val as f32) as usize
+            && indisp_val <= (self.upper_threshold * max_indisp_val as f32) as usize
+    }
+
     fn update_velocity_parameters(&mut self) {
         self.vel_min = self.params.velocity_min.value();
         self.vel_max = self.params.velocity_max.value();
@@ -179,8 +184,7 @@ impl MetreFiddler {
                 channel,
                 note,
                 ..
-            } => { if indisp_val >= (self.lower_threshold.min(self.upper_threshold) * max as f32) as usize 
-                && indisp_val <= (self.upper_threshold * max as f32) as usize {                
+            } => { if self.is_indisp_val_within_thresholds(indisp_val, max) {
                 Some(NoteEvent::NoteOn {
                     timing,
                     voice_id,
@@ -331,6 +335,10 @@ impl Plugin for MetreFiddler {
                 // TODO this can be done somewhere else and less often
                 self.update_velocity_parameters_smoothed_with_step(1);
 
+                if self.params.use_bpm.value() {
+                    self.set_metric_duration_for_bpm(context.transport().tempo);
+                }
+
                 // TODO would love to retrieve this just once every buffer but we're also borrowing self mutably...
                 let metric_data_a = &self.params.metre_data_a.lock().unwrap();
                 let metric_data_b = &self.params.metre_data_b.lock().unwrap();
@@ -373,25 +381,31 @@ impl Plugin for MetreFiddler {
                             *metric_data_a.value.get(current_beat_idx).unwrap_or(&0),
                             *metric_data_b.value.get(current_beat_idx).unwrap_or(&0),
                             self.interpolate)
-                            .floor() as usize;
-                        let vel =  self.calculate_current_velocity(indisp_val);
-                        let note = 60 + indisp_val as u8;
+                            .round() as usize;
+                        let max = (metric_data_a.value.len() - 1).max(metric_data_b.value.len() - 1);
 
-                        context.send_event(
-                            NoteEvent::NoteOn {
-                                timing: sample as u32,
-                                velocity: vel,
-                                channel: 0,
-                                note,
-                                voice_id: None
-                            });
+                        // check thresholds...
+                        if self.is_indisp_val_within_thresholds(indisp_val, max) {
 
-                        self.last_sent_beat_idx = current_beat_idx as i32;
+                            let vel =  self.calculate_current_velocity(indisp_val);
+                            let note = 60 + indisp_val as u8;
 
-                        // send a Note Off into self.note_off_buffer
-                        if let Some((n, delay)) = self.note_off_buffer.iter_mut().find(|&&mut (x, y)| y<0) {
-                            *delay = sample as i64 + (0.1 * self.sample_rate).floor() as i64;
-                            *n = note;
+                            context.send_event(
+                                NoteEvent::NoteOn {
+                                    timing: sample as u32,
+                                    velocity: vel,
+                                    channel: 0,
+                                    note,
+                                    voice_id: None
+                                });
+
+                            self.last_sent_beat_idx = current_beat_idx as i32;
+
+                            // send a Note Off into self.note_off_buffer
+                            if let Some((n, delay)) = self.note_off_buffer.iter_mut().find(|&&mut (x, y)| y<0) {
+                                *delay = sample as i64 + (0.1 * self.sample_rate).floor() as i64;
+                                *n = note;
+                            }
                         }
                     }
                 } else {
