@@ -263,6 +263,7 @@ impl Plugin for MetreFiddler {
         self.last_reset_phase_value = self.params.reset_phase.value();
 
         // either process events or send some
+        // TODO is it possible to process evens while sending them also??
         if process_events {
             let mut last_note_was_let_through = true;
             let mut elapsed_samples: u32;
@@ -402,7 +403,7 @@ impl Plugin for MetreFiddler {
                             self.last_sent_beat_idx = current_beat_idx as i32;
 
                             // send a Note Off into self.note_off_buffer
-                            if let Some((n, delay)) = self.note_off_buffer.iter_mut().find(|&&mut (x, y)| y<0) {
+                            if let Some((n, delay)) = self.note_off_buffer.iter_mut().find(|&&mut (_, y)| y<0) {
                                 *delay = sample as i64 + (0.1 * self.sample_rate).floor() as i64;
                                 *n = note;
                             }
