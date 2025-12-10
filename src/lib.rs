@@ -171,7 +171,7 @@ impl MetreFiddler {
             // Get the actual indispensability value from the vector
             indisp_val = ((indisp_ls_a[indisp_idx_a] as f32 * (1.0 - interpol))
                 +(indisp_ls_b[indisp_idx_b] as f32 * interpol))
-                .round() as usize;
+                .ceil() as usize; // TODO decide if round or ceil (ceil prevents duplicates better...?)
         }
 
         let vel: f32 = self.calculate_current_velocity(indisp_val);
@@ -381,7 +381,7 @@ impl Plugin for MetreFiddler {
                             *metric_data_a.value.get(current_beat_idx).unwrap_or(&0),
                             *metric_data_b.value.get(current_beat_idx).unwrap_or(&0),
                             self.interpolate)
-                            .round() as usize;
+                            .ceil() as usize; // TODO decide if round or ceil (ceil prevents duplicates better...?)
                         let max = (metric_data_a.value.len() - 1).max(metric_data_b.value.len() - 1);
 
                         // check thresholds...
