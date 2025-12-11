@@ -1,4 +1,3 @@
-use std::fmt::Alignment::Center;
 use nih_plug::prelude::{Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
@@ -140,7 +139,7 @@ impl Model for Data {
                 cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
             }
             MetreFiddlerEvent::ToggleCheckForPhaseReset => {
-                if self.params.reset_info.load(SeqCst) == false {
+                if !self.params.reset_info.load(SeqCst) {
                     cx.emit(RevertPhaseReset);
                 } else {
                     self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle; 
@@ -171,7 +170,7 @@ pub(crate) fn create(
             text_input_a: metre_data_a.input.clone(),
             text_input_b: metre_data_b.input.clone(),
             last_input_is_valid: true,
-            max_threshold: metre_data_a.max.clone().max(metre_data_b.max.clone()),
+            max_threshold: metre_data_a.max.max(metre_data_b.max),
             display_metre_info: false,
             display_b: false,
             displayed_position: params.displayed_position.clone(),

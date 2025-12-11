@@ -93,7 +93,7 @@ impl ParamSliderV {
         cx: &mut Context,
         params: L,
         params_to_param: FMap,
-    ) -> Handle<Self>
+    ) -> Handle<'_, Self>
     where
         L: Lens<Target = Params> + Clone,
         Params: 'static,
@@ -631,18 +631,18 @@ impl View for ParamSliderV {
 pub trait ParamSliderVExt {
     /// Don't respond to scroll wheel events. Useful when this slider is used as part of a scrolling
     /// view.
-    fn disable_scroll_wheel(self) -> Self;
+    fn _disable_scroll_wheel(self) -> Self;
 
     /// Change how the [`ParamSliderV`] visualizes the current value.
     fn set_style(self, style: ParamSliderStyle) -> Self;
 
     /// Manually set a fixed label for the slider instead of displaying the current value. This is
     /// currently not reactive.
-    fn with_label(self, value: impl Into<String>) -> Self;
+    fn _with_label(self, value: impl Into<String>) -> Self;
 }
 
 impl ParamSliderVExt for Handle<'_, ParamSliderV> {
-    fn disable_scroll_wheel(self) -> Self {
+    fn _disable_scroll_wheel(self) -> Self {
         self.modify(|param_slider: &mut ParamSliderV| param_slider.use_scroll_wheel = false)
     }
 
@@ -650,7 +650,7 @@ impl ParamSliderVExt for Handle<'_, ParamSliderV> {
         self.modify(|param_slider: &mut ParamSliderV| param_slider.style = style)
     }
 
-    fn with_label(self, value: impl Into<String>) -> Self {
+    fn _with_label(self, value: impl Into<String>) -> Self {
         self.modify(|param_slider: &mut ParamSliderV| {
             param_slider.label_override = Some(value.into())
         })

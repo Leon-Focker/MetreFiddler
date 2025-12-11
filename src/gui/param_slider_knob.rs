@@ -56,7 +56,7 @@ impl ParamSliderKnob {
         cx: &mut Context,
         params: L,
         params_to_param: FMap,
-    ) -> Handle<Self>
+    ) -> Handle<'_, Self>
     where
         L: Lens<Target = Params> + Clone,
         Params: 'static,
@@ -226,8 +226,6 @@ impl ParamSliderKnob {
     /// `self.param_base.set_normalized_value()`, but resulting from a mouse drag. 
     /// This still needs to be wrapped in a parameter automation gesture.
     fn set_normalized_value_drag(&self, cx: &mut EventContext, normalized_value: f32) {
-        let normalized_value =  normalized_value;
-
         self.param_base.set_normalized_value(cx, normalized_value);
     }
 }

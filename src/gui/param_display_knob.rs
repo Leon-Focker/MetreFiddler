@@ -18,7 +18,7 @@ impl ParamDisplayKnob {
     pub fn new<L>(
         cx: &mut Context,
         value: L,
-    ) -> Handle<Self>
+    ) -> Handle<'_, Self>
     where
         L: Lens<Target = f32>
     {

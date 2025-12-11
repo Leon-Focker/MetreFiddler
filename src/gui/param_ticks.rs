@@ -11,7 +11,7 @@ impl ParamTicks {
         durations_a: L,
         durations_b: M,
         interpolate: f32,
-    ) -> Handle<Self>
+    ) -> Handle<'_, Self>
     where
         L: Lens<Target = Vec<f32>>,
         M: Lens<Target = Vec<f32>>,
@@ -51,6 +51,7 @@ impl ParamTicks {
                 let dur_b = *durations_b.get(cx).iter().nth(i).unwrap_or(&0.0);
 
                 Element::new(cx)
+                    // TODO cooler (smarter) interpolation?
                     .width(Stretch(dry_wet(dur_a, dur_b, interpolate)))
                     .height(Pixels(10.0));
 

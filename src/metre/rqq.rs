@@ -54,7 +54,7 @@ impl RQQ {
     /// ```
     pub fn to_gnsm(self) -> Result<Vec<usize>, String>{
         match self {
-            Elem(_) => Err(format!("rqq.to_gnsm got malformed rqq list")),
+            Elem(_) => Err("rqq.to_gnsm got malformed rqq list".to_string()),
             List(vec) => {
                 if vec.len() == 2 {
                     let mut result = vec[1].clone().to_gnsm_aux(1)?;
@@ -66,7 +66,7 @@ impl RQQ {
 
                     Ok(result)
                 } else {
-                    Err(format!("rqq.to_gnsm got malformed rqq list"))
+                    Err("rqq.to_gnsm got malformed rqq list".to_string())
                 }
             }
         }
@@ -154,7 +154,7 @@ impl RQQ {
 
 /// Parse a &str to RQQ 
 pub fn parse_rqq(input: &str) ->  Result<RQQ, String> {
-    if input.len() < 1 { return Err("rqq must have at least one element".to_string()); }
+    if input.is_empty() { return Err("rqq must have at least one element".to_string()); }
     let mut result: RQQ = List(vec![]);
     let mut lvl = -1;
     let mut elements = Vec::new();
@@ -181,9 +181,8 @@ pub fn parse_rqq(input: &str) ->  Result<RQQ, String> {
             " " => (),
             _ => {
                 // keep numbers only
-                match element.parse::<f32>() {
-                    Ok(num) => result.push_recur(Elem(num), lvl),
-                    Err(_) => (),
+                if let Ok(num) = element.parse::<f32>() {
+                    result.push_recur(Elem(num), lvl)
                 };
             }
         }
@@ -191,7 +190,7 @@ pub fn parse_rqq(input: &str) ->  Result<RQQ, String> {
     
     result = match result {
         List(vec) => {
-            if vec.len() < 1 { return Err("rqq contains no numbers!".to_string()); }
+            if vec.is_empty() { return Err("rqq contains no numbers!".to_string()); }
             vec[0].clone()
         },
         Elem(_) => result,
@@ -200,6 +199,6 @@ pub fn parse_rqq(input: &str) ->  Result<RQQ, String> {
     if result.no_empty_lists() {
         Ok(result)
     } else {
-        Err(format!("rqq contains malformed rqq list"))
+        Err("rqq contains malformed rqq list".to_string())
     }
 }

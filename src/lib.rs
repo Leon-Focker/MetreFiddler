@@ -3,7 +3,6 @@ use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
 use crate::params::MetreFiddlerParams;
 use crate::util::{dry_wet, rescale};
-use nih_log;
 
 mod editor;
 mod metre_data;
@@ -106,10 +105,8 @@ impl MetreFiddler {
 
     // set metric_duration to length of a quarter note times the slider
     fn set_metric_duration_for_bpm(&mut self, tempo: Option<f64>) {
-        let one_crotchet = 60.0 / if let Some(tempo) = tempo {
-            tempo
-        } else { 60.0 };
-        self.metric_duration = one_crotchet as f32 * self.metric_duration;
+        let one_crotchet = 60.0 / tempo.unwrap_or(60.0);
+        self.metric_duration *= one_crotchet as f32;
     }
 
     fn calculate_current_velocity(&self, indisp_value: usize) -> f32 {
@@ -134,6 +131,7 @@ impl MetreFiddler {
         let metric_data_a = &self.params.metre_data_a.lock().unwrap();
         let metric_data_b = &self.params.metre_data_b.lock().unwrap();
         let max_len = metric_data_a.durations.len().max(metric_data_b.durations.len());
+        let same_length: bool = metric_data_a.durations.len() == metric_data_b.durations.len();
 
         let mut current_beat_duration_sum: f32 = 0.0;
         let mut current_beat_idx: usize = 0;
@@ -143,6 +141,7 @@ impl MetreFiddler {
         loop {
             let dur_a = *metric_data_a.durations.get(current_beat_idx).unwrap_or(&0.0);
             let dur_b = *metric_data_b.durations.get(current_beat_idx).unwrap_or(&0.0);
+            // TODO cooler (smarter) interpolation? move each tick to the closest other tick?
             let dur = dry_wet(dur_a, dur_b, self.interpolate);
             current_beat_duration_sum += dur;
             if current_beat_idx >= max_len || current_beat_duration_sum >= self.get_normalized_position_in_bar() {
@@ -153,11 +152,16 @@ impl MetreFiddler {
             }
         };
 
-        let indisp_val: usize = dry_wet(
+        let indisp_val_temp = dry_wet(
             *metric_data_a.value.get(current_beat_idx).unwrap_or(&0),
             *metric_data_b.value.get(current_beat_idx).unwrap_or(&0),
-            self.interpolate)
-            .ceil() as usize; // TODO decide if round or ceil (ceil prevents duplicates better...?)
+            self.interpolate);
+        // TODO is this a good method for round/ceil? needs more testing!
+        let indisp_val: usize = if same_length {
+            indisp_val_temp.round() as usize
+        } else {
+            indisp_val_temp.ceil() as usize
+        };
 
         (current_beat_idx,
          current_beat_duration_sum,
@@ -168,7 +172,6 @@ impl MetreFiddler {
     /// Get a MIDI event and either return none (filter it) or return it with a new velocity
     /// value (according to the current metric position).
     fn process_event<S: SysExMessage>(&mut self, event: NoteEvent<S>) -> Option<NoteEvent<S>> {
-        // TODO interpolation between A and B should match send midi
         let (_,_, indisp_val, let_through) = self.get_current_indisp_data();
         let vel: f32 = self.calculate_current_velocity(indisp_val);
 

@@ -8,9 +8,7 @@ use vizia_plug::widgets::param_base::ParamWidgetBase;
 /// parameter's minimum and maximum value. The `:checked` pseudoclass indicates whether or not the
 /// button is currently pressed.
 #[derive(Lens)]
-pub struct ParamLabel {
-    param_base: ParamWidgetBase,
-}
+pub struct ParamLabel {}
 
 impl ParamLabel {
     /// Creates a new [`ParamLabel`] for the given parameter. See
@@ -20,7 +18,7 @@ impl ParamLabel {
         params: L,
         params_to_param: FMap,
         label_fn: FLabel,
-    ) -> Handle<Self>
+    ) -> Handle<'_, Self>
     where
         L: Lens<Target = Params> + Clone,
         Params: 'static,
@@ -30,9 +28,7 @@ impl ParamLabel {
     {
         let label_fn_boxed = Box::new(label_fn);
         
-        Self {
-            param_base: ParamWidgetBase::new(cx, params, params_to_param),
-        }
+        Self {}
             .build(
                 cx,
                 ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {

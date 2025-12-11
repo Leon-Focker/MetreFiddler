@@ -63,10 +63,8 @@ pub fn decider<T: Num + PartialOrd + Copy + Debug + Sum<T>>(selector: T, weights
 }
 
 fn decider_aux<T: Num + PartialOrd + Copy + Debug>(selector: T, ls1: &[T], index: T, sum: T) -> Result<T, &'static str> {
-    if ls1.is_empty() {
+    if ls1.is_empty() || selector < sum {
         Ok(index)
-    } else if selector < sum {
-        return Ok(index)
     } else {
         decider_aux(selector, &ls1[1..], index + T::one(), sum + ls1[0])
     }
@@ -81,12 +79,12 @@ pub fn dry_wet<T: NumCast + Copy>(dry: T, wet: T, mix: f32) -> f32 {
     dry * (1.0 - mix) + wet * mix
 }
 
-pub fn interpolate_vectors<T: NumCast + Copy + num_traits::Zero>(vec_a: &[T], vec_b: &[T], interpolation: f32) -> Vec<f32> {
+pub fn _interpolate_vectors<T: NumCast + Copy + num_traits::Zero>(vec_a: &[T], vec_b: &[T], interpolation: f32) -> Vec<f32> {
     let max_len = vec_a.len().max(vec_b.len());
     let mut result = Vec::with_capacity(max_len);
 
-    for i in 0..max_len {
-        result[i] = dry_wet(*vec_a.get(i).unwrap_or(&T::zero()), *vec_b.get(i).unwrap_or(&T::zero()), interpolation)
+    for (i, element) in result.iter_mut().enumerate().take(max_len) {
+        *element = dry_wet(*vec_a.get(i).unwrap_or(&T::zero()), *vec_b.get(i).unwrap_or(&T::zero()), interpolation);
     }
 
     result

@@ -61,7 +61,7 @@ fn gnsm_to_indispensability_list(gnsm: Vec<usize>) -> Result<Vec<usize>, String>
 }
 
 // helper functions
-fn get_indices(layer: isize, gnsm: &Vec<usize>, indices: &mut Vec<usize>) -> () {
+fn get_indices(layer: isize, gnsm: &[usize], indices: &mut Vec<usize>) {
     indices.clear();
     for (i, e) in gnsm.iter().enumerate() {
         if *e == layer as usize {
@@ -81,18 +81,18 @@ fn fundamental_indispensability(len: usize) -> Vec<usize> {
     result
 }
 
-fn next_set_index(result: &Vec<isize>, mut idx: usize, len: usize) -> usize {
+fn next_set_index(result: &[isize], mut idx: usize, len: usize) -> usize {
     loop {
         idx = (idx + 1).rem_euclid(len);
         if result[idx] >= 0 { return idx; }
     }
 }
 
-fn copy_from_neighbours(indices: &Vec<usize>, set_indices: &mut Vec<usize>, result: &mut Vec<isize>, len: usize) -> () {
+fn copy_from_neighbours(indices: &[usize], set_indices: &mut Vec<usize>, result: &mut [isize], len: usize) -> () {
     set_indices.clear();
     for i in 0..indices.len() {
         let idx = indices[i];
-        let next = next_set_index(&result, idx, len);
+        let next = next_set_index(result, idx, len);
         if i+1 == indices.len() || (idx < next && next < indices[i+1]) {
             set_indices.push(idx);
             result[idx] = result[next];
@@ -100,11 +100,11 @@ fn copy_from_neighbours(indices: &Vec<usize>, set_indices: &mut Vec<usize>, resu
     }
 }
 
-fn sort_copied_indices(result: &Vec<isize>, set_indices: &Vec<usize>) -> Vec<usize> {
+fn sort_copied_indices(result: &[isize], set_indices: &[usize]) -> Vec<usize> {
     let mut order: Vec<usize> = Vec::with_capacity(set_indices.len());
     let mut n = 0;
     while order.len() < set_indices.len() {
-        for i in set_indices.clone() {
+        for &i in set_indices {
             if n == result[i] { order.push(i) }
         }
         n += 1;
