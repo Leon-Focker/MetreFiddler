@@ -1,9 +1,8 @@
-use std::cmp::max;
 use nih_plug::prelude::*;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
 use crate::params::MetreFiddlerParams;
-use crate::util::{decider, dry_wet, rescale};
+use crate::util::{dry_wet, rescale};
 use nih_log;
 
 mod editor;
