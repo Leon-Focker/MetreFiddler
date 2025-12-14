@@ -5,14 +5,14 @@ use crate::metre::rqq::RQQ;
 /// indispensability values are inverted, so that the most important beat is
 /// always 0!
 pub fn rqq_to_indispensability_list(rqq: RQQ) -> Result<Vec<usize>, String> {
-    gnsm_to_indispensability_list(rqq.to_gnsm()?)
+    gnsm_to_indispensability_list(&rqq.to_gnsm()?)
 }
 
 /// Get the indispensability values for each pulse/beat in a stratified meter,
 /// according to Clarence Barlow and Bernd Härpfer. However, here the
 /// indispensability values are inverted, so that the most important beat is
 /// always 0!
-fn gnsm_to_indispensability_list(gnsm: Vec<usize>) -> Result<Vec<usize>, String> {
+pub fn gnsm_to_indispensability_list(gnsm: &[usize]) -> Result<Vec<usize>, String> {
     let len = gnsm.len();
     let mut result: Vec<isize> = vec![-1; len];
     let mut indices: Vec<usize> = vec![];

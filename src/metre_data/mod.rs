@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use crate::metre::indispensability::rqq_to_indispensability_list;
+use crate::metre::indispensability::{gnsm_to_indispensability_list, rqq_to_indispensability_list};
 use crate::metre::rqq::parse_rqq;
 
 // *must* derive Serialize and Deserialize for persistence
@@ -8,6 +8,7 @@ use crate::metre::rqq::parse_rqq;
 pub struct MetreData {
     pub input: String,
     pub value: Vec<usize>,
+    pub gnsm: Vec<usize>,
     pub durations: Vec<f32>,
     pub max: usize,
 }
@@ -25,7 +26,8 @@ pub fn parse_input(text: &str) -> Result<MetreData, String> {
     let durations = rqq.to_durations(1.0)?;
     let sum: f32 = durations.iter().sum();
     let durations = durations.iter().map(|x| x / sum).collect::<Vec<f32>>();
-    let value = rqq_to_indispensability_list(rqq)?;
+    let gnsm = rqq.to_gnsm()?;
+    let value = gnsm_to_indispensability_list(&gnsm)?;
     
     Ok(
         MetreData {
@@ -33,6 +35,7 @@ pub fn parse_input(text: &str) -> Result<MetreData, String> {
             durations,
             max: *value.iter().max().unwrap_or(&1),
             value,
+            gnsm,
         }
     )
 }
