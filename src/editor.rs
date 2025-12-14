@@ -85,7 +85,8 @@ impl Model for Data {
                                 *metre_data = new_metre_data;
                                 self.max_threshold = metre_data.max.max(metre_data_a.max);
                                 self.last_input_is_valid = true;
-                                let new_interpolation_data = generate_interpolation_data(&metre_data_a.durations, &metre_data.durations);
+                                let new_interpolation_data =
+                                    generate_interpolation_data(&metre_data_a.durations, &metre_data.durations, &metre_data_a.gnsm, &metre_data.gnsm);
                                 self.interpolation_data_snapshot = new_interpolation_data.clone();
                                 *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
                             },
@@ -107,7 +108,8 @@ impl Model for Data {
                                 *metre_data = new_metre_data;
                                 self.max_threshold = metre_data.max.max(metre_data_b.max);
                                 self.last_input_is_valid = true;
-                                let new_interpolation_data = generate_interpolation_data(&metre_data.durations, &metre_data_b.durations);
+                                let new_interpolation_data =
+                                    generate_interpolation_data(&metre_data.durations, &metre_data_b.durations, &metre_data.gnsm, &metre_data_b.gnsm);
                                 self.interpolation_data_snapshot = new_interpolation_data.clone();
                                 *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
                             },

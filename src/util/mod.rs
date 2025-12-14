@@ -89,3 +89,15 @@ pub fn _interpolate_vectors<T: NumCast + Copy + num_traits::Zero>(vec_a: &[T], v
 
     result
 }
+
+pub fn get_start_times<T: Num + Copy>(durations: &[T]) -> Vec<T> {
+    let mut time = T::zero();
+    let mut result = Vec::with_capacity(durations.len());
+
+    for &dur in durations {
+        result.push(time);
+        time = dur + time;
+    }
+
+    result
+}
