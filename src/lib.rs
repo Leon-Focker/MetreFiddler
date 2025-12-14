@@ -130,6 +130,7 @@ impl MetreFiddler {
     fn get_current_indisp_data(&self) -> (usize, f32, usize, bool) {
         let metric_data_a = &self.params.metre_data_a.lock().unwrap();
         let metric_data_b = &self.params.metre_data_b.lock().unwrap();
+        let interpolation_data = &self.params.interpolation_data.lock().unwrap();
         let max_len = metric_data_a.durations.len().max(metric_data_b.durations.len());
         let same_length: bool = metric_data_a.durations.len() == metric_data_b.durations.len();
 
@@ -139,9 +140,7 @@ impl MetreFiddler {
         // do this instead of using decider(), so that we can interpolate the start times of
         // two metric definitions without memory alloc.
         loop {
-            let dur_a = *metric_data_a.durations.get(current_beat_idx).unwrap_or(&0.0);
-            let dur_b = *metric_data_b.durations.get(current_beat_idx).unwrap_or(&0.0);
-            // TODO cooler (smarter) interpolation? move each tick to the closest other tick?
+            let (dur_a, dur_b) = *interpolation_data.value.get(current_beat_idx).unwrap_or(&(0.0, 0.0));
             let dur = dry_wet(dur_a, dur_b, self.interpolate);
             current_beat_duration_sum += dur;
             if current_beat_idx >= max_len || current_beat_duration_sum >= self.get_normalized_position_in_bar() {

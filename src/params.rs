@@ -5,6 +5,7 @@ use std::sync::atomic::AtomicBool;
 use nih_plug::prelude::SmoothingStyle::Linear;
 use crate::editor;
 use crate::metre_data::{MetreData};
+use crate::metre::interpolation::{generate_interpolation_data, InterpolationData};
 
 #[derive(Params)]
 pub struct MetreFiddlerParams {
@@ -52,6 +53,9 @@ pub struct MetreFiddlerParams {
     #[persist = "metre_data_b"]
     pub metre_data_b: Arc<Mutex<MetreData>>,
 
+    #[persist = "interpolation_data"]
+    pub interpolation_data: Arc<Mutex<InterpolationData>>,
+
     // Interpolate between A and B
     #[id = "interpolate_a_b"]
     pub interpolate_a_b: FloatParam,
@@ -82,6 +86,8 @@ impl Default for MetreFiddlerParams {
             metre_data_a: Arc::new(Mutex::new(MetreData::default())),
 
             metre_data_b: Arc::new(Mutex::new(MetreData::default())),
+
+            interpolation_data: Arc::new(Mutex::new(InterpolationData::default())),
 
             interpolate_a_b: FloatParam::new(
                 "Interpolate between Metre A and B",

@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use crate::metre::indispensability::{gnsm_to_indispensability_list, rqq_to_indispensability_list};
+use crate::metre::indispensability::{gnsm_to_indispensability_list};
 use crate::metre::rqq::parse_rqq;
 
 // *must* derive Serialize and Deserialize for persistence

@@ -15,6 +15,7 @@ use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
 use crate::gui::param_label::{ParamLabel, };
 use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
 use crate::gui::param_ticks::ParamTicks;
+use crate::metre::interpolation::{generate_interpolation_data, InterpolationData};
 use crate::metre_data::parse_input;
 
 // TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and
@@ -47,10 +48,9 @@ const NEW_STYLE: &str = r#"
 #[derive(Lens, Clone)]
 pub(crate) struct Data {
     pub(crate) params: Arc<MetreFiddlerParams>,
+    pub(crate) interpolation_data_snapshot: InterpolationData,
     pub(crate) text_input_a: String,
     pub(crate) text_input_b: String,
-    pub(crate) durations_a: Arc<Mutex<Vec<f32>>>,
-    pub(crate) durations_b: Arc<Mutex<Vec<f32>>>,
     pub(crate) display_b: bool,
     pub(crate) last_input_is_valid: bool,
     pub(crate) max_threshold: usize,
@@ -82,10 +82,12 @@ impl Model for Data {
                         match parse_input(new_text) {
                             Ok(new_metre_data) => {
                                 let metre_data_a = self.params.metre_data_a.lock().unwrap();
-                                self.durations_b = Arc::new(Mutex::new(new_metre_data.durations.clone()));
                                 *metre_data = new_metre_data;
                                 self.max_threshold = metre_data.max.max(metre_data_a.max);
                                 self.last_input_is_valid = true;
+                                let new_interpolation_data = generate_interpolation_data(&metre_data_a.durations, &metre_data.durations);
+                                self.interpolation_data_snapshot = new_interpolation_data.clone();
+                                *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
                             },
                             Err(err_string) => {
                                 nih_log!("Failed to parse string: '{}': {}", self.text_input_b, err_string);
@@ -102,10 +104,12 @@ impl Model for Data {
                         match parse_input(new_text) {
                             Ok(new_metre_data) => {
                                 let metre_data_b = self.params.metre_data_b.lock().unwrap();
-                                self.durations_a = Arc::new(Mutex::new(new_metre_data.durations.clone()));
                                 *metre_data = new_metre_data;
                                 self.max_threshold = metre_data.max.max(metre_data_b.max);
                                 self.last_input_is_valid = true;
+                                let new_interpolation_data = generate_interpolation_data(&metre_data.durations, &metre_data_b.durations);
+                                self.interpolation_data_snapshot = new_interpolation_data.clone();
+                                *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
                             },
                             Err(err_string) => {
                                 nih_log!("Failed to parse string: '{}': {}", self.text_input_a, err_string);
@@ -175,8 +179,7 @@ pub(crate) fn create(
             display_b: false,
             displayed_position: params.displayed_position.clone(),
             check_for_phase_reset_toggle: false,
-            durations_a: Arc::new(Mutex::new(metre_data_a.durations.clone())),
-            durations_b: Arc::new(Mutex::new(metre_data_b.durations.clone())),
+            interpolation_data_snapshot: params.interpolation_data.lock().unwrap().clone(),
         }
             .build(cx);
 
@@ -414,19 +417,12 @@ fn duration_position(cx: &mut Context) {
                         Data::params,
                         |params| &params.interpolate_a_b,
                         |cx, interpolate| {
-                            Binding::new(cx, Data::durations_a, move |cx, durs_a | {
-                                Binding::new(cx, Data::durations_b, move |cx, durs_b | {
-                                    ParamTicks::new(
-                                        cx,
-                                        durs_a
-                                            .map(|durations| durations.lock().unwrap().clone()),
-                                        durs_b
-                                            .map(|durations| durations.lock().unwrap().clone()),
-                                        interpolate)
-                                        .width(Pixels(200.0))
-                                        .height(Pixels(20.0));
-                                });
-                            })
+                            ParamTicks::new(
+                                cx,
+                                Data::interpolation_data_snapshot,
+                                interpolate)
+                                .width(Pixels(200.0))
+                                .height(Pixels(20.0));
                         }).alignment(Alignment::Center);
                 })
                     .alignment(Alignment::Center);
