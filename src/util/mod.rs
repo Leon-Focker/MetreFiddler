@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use std::iter::Sum;
-use num_traits::{Num, NumCast};
+use num_traits::{Float, Num, NumCast};
 
 ///  Given a value within an original range, return its value within a new range.
 ///
@@ -100,4 +100,8 @@ pub fn get_start_times<T: Num + Copy>(durations: &[T]) -> Vec<T> {
     }
 
     result
+}
+
+pub fn approx_eq<T: Float>(a: T, b: T, epsilon: T) -> bool {
+    (a - b).abs() <= epsilon
 }
