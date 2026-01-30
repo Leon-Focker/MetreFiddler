@@ -408,7 +408,7 @@ impl Plugin for MetreFiddler {
 
 impl ClapPlugin for MetreFiddler {
     const CLAP_ID: &'static str = "leonfocker.metrefiddler";
-    const CLAP_DESCRIPTION: Option<&'static str> = Some("A simple distortion plugin flipping one bit of every sample");
+    const CLAP_DESCRIPTION: Option<&'static str> = Some("Midi processing based on metric structures");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[
