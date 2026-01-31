@@ -15,7 +15,7 @@ use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
 use crate::gui::param_label::{ParamLabel, };
 use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
 use crate::gui::param_ticks::ParamTicks;
-use crate::metre::interpolation::{generate_interpolation_data, InterpolationData};
+use crate::metre::interpolation::interpolation::*;
 use crate::metre_data::parse_input;
 
 // TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and

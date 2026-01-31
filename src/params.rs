@@ -5,7 +5,7 @@ use std::sync::atomic::AtomicBool;
 use nih_plug::prelude::SmoothingStyle::Linear;
 use crate::editor;
 use crate::metre_data::{MetreData};
-use crate::metre::interpolation::{generate_interpolation_data, InterpolationData};
+use crate::metre::interpolation::interpolation::{generate_interpolation_data, InterpolationData};
 
 #[derive(Params)]
 pub struct MetreFiddlerParams {

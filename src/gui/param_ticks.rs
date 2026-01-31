@@ -1,6 +1,6 @@
 use vizia_plug::vizia::prelude::*;
 use crate::gui::param_binding::ParamBinding;
-use crate::metre::interpolation::InterpolationData;
+use crate::metre::interpolation::interpolation::InterpolationData;
 use crate::util::dry_wet;
 
 #[derive(Lens)]
