@@ -1,30 +1,32 @@
 use std::cmp::Ordering;
 use std::ops::{Deref, DerefMut};
 
-/// TODO doc
+/// This holds pairs of indices, which are matched up together when interpolating between two different
+/// metric structures. When both are set, for example (1, 2), the start times of these indices will be
+/// interpolated. When only on is set, for example (2, None), that index has no partner and will be
+/// interpolated with whatever start-time comes after. A pair of Nones is a placeholder.
 #[derive(Debug, Default)]
 pub struct IndexPairs {
     data: Vec<(Option<usize>, Option<usize>)>,
 }
 
 impl IndexPairs {
-    pub(crate) fn with_len(len: usize) -> Self {
+    pub(crate) fn new_with_len(len: usize) -> Self {
         IndexPairs {
             data: vec![(None, None); len],
         }
     }
-    /// Collect ascending indices from range of each section, choose out-of-bounds index if necessary.
-    pub(crate) fn ascending_indices_with_padding(len: usize, len_a: usize, len_b: usize, offset_a: usize, offset_b: usize) -> Self {
-        IndexPairs {
-            data:   (0..len).map(|i| (
+    /// Collect ascending indices from range of each section, choose None if out of bounds.
+    pub(crate) fn ascending_indices_with_padding(&mut self, len: usize, len_a: usize, len_b: usize, offset_a: usize, offset_b: usize) {
+        self.data =
+            (0..len).map(|i| (
                 if i < len_a {
                     Some(i + offset_a)
                 } else { None },
                 if i < len_b {
                     Some(i + offset_b)
                 } else { None },
-            )).collect()
-        }
+            )).collect();
     }
     pub(crate) fn set_first_free(&mut self, value: (Option<usize>, Option<usize>)) {
         if let Some(elem) = self

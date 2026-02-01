@@ -63,8 +63,6 @@ pub fn generate_interpolation_data(durations_a: &[f32], durations_b: &[f32], gns
     }
 }
 
-
-
 /// Given durations A and B, look for identical start times. For each identical start time in both
 /// sets of durations, get their indices and pair them into result.
 fn pair_identical_start_times(result: &mut IndexPairs, data_a: &InterpolationDataHelper, data_b: &InterpolationDataHelper) {
@@ -93,6 +91,7 @@ fn pair_higher_stratum_by_time(data_a: &InterpolationDataHelper, data_b: &Interp
     (Some(idx_a + data_a.offset), Some(idx_b + data_b.offset))
 }
 
+/// Pair the beats with the highest metrical value from each set of durations.
 fn pair_highest_stratus (data_a: &InterpolationDataHelper, data_b: &InterpolationDataHelper) -> (Option<usize>, Option<usize>) {
     // find the indices which belong to the highest stratus
     let highest_stratum_a = *data_a.gnsm.iter().max().unwrap_or(&1);
@@ -105,16 +104,10 @@ fn pair_highest_stratus (data_a: &InterpolationDataHelper, data_b: &Interpolatio
 
 /// Return a vector of pairs of indices.
 fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: InterpolationDataHelper) -> IndexPairs {
-    nih_trace!("Tracing starts here!:");
     let max_len = data_a.len.max(data_b.len);
     let no_strata_left_a = data_a.gnsm.iter().all(|&x| x == *data_a.gnsm.get(0).unwrap_or(&0));
     let no_strata_left_b = data_b.gnsm.iter().all(|&x| x == *data_a.gnsm.get(0).unwrap_or(&0));
-    let mut result = IndexPairs::with_len(max_len);
-
-    nih_log!("durs a: {:?}", data_a.durations);
-    nih_log!("offset a: {:?}", data_a.offset);
-    nih_log!("durs b: {:?}", data_b.durations);
-    nih_log!("offset b: {:?}", data_b.offset);
+    let mut result = IndexPairs::new_with_len(max_len);
 
     // Apply one of the methods below (either complete result or match some indices),
     // then call recursively with empty subsections
@@ -125,7 +118,7 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
         || data_b.durations.is_empty()
         || (no_strata_left_a && no_strata_left_b) {
         nih_dbg!("simple!");
-        result = IndexPairs::ascending_indices_with_padding(max_len, data_a.len, data_b.len, data_a.offset, data_b.offset);
+        result.ascending_indices_with_padding(max_len, data_a.len, data_b.len, data_a.offset, data_b.offset);
     } else {
         // try finding pairs via similar start-times, only try this once (when offsets = 0), because else the first will always match
         if data_a.offset == 0 && data_b.offset == 0 {
@@ -136,7 +129,7 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
         else if result.all_free() &&
             data_a.len.abs_diff(data_b.len) == 1 {
             nih_dbg!("difference of 1");
-            result = IndexPairs::ascending_indices_with_padding(max_len, data_a.len, data_b.len, data_a.offset, data_b.offset);
+            result.ascending_indices_with_padding(max_len, data_a.len, data_b.len, data_a.offset, data_b.offset);
         } else {
             // If there is metrical hierarchy left in only one of the sections, find a match from the
             // highest stratum via start-time
@@ -161,10 +154,8 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
 
     result.sort();
 
-    nih_dbg!(data_a.offset);
-    nih_dbg!(data_b.offset);
-    nih_log!("sorted: {:?}", &result);
-
+    // TODO I'm sure this could be more concise...
+    // Check which subsections have yet to be set, call this function recursively on them
     let mut last_a = data_a.offset;
     let mut last_b = data_b.offset;
     let mut flag = false;
@@ -175,8 +166,6 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
             let diff_b = b - last_b;
 
             if diff_a.max(diff_b) > if flag { 1 } else { 0 } {
-                nih_log!("during");
-                nih_dbg!(flag);
                 subseqs.append(&mut call_with_slices(&data_a, &data_b,
                                                      if flag { last_a + 1} else { last_a } - data_a.offset,
                                                      if flag { last_b + 1} else { last_b } - data_b.offset,
@@ -200,8 +189,6 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
     let diff_b = data_b.len + data_b.offset - last_b;
 
     if diff_a.max(diff_b) > if flag { 1 } else { 0 } {
-        nih_log!("in the end");
-        nih_dbg!(flag);
         subseqs.append(&mut call_with_slices(&data_a, &data_b,
                                              if flag { last_a + 1} else { last_a } - data_a.offset,
                                              if flag { last_b + 1} else { last_b } - data_b.offset,
@@ -209,6 +196,7 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
                                              if flag { diff_b - 1 } else { diff_b },));
     }
 
+    // Add the subsections to result
     subseqs.reverse();
     for elem in result.iter_mut() {
         if let (None, None) = *elem {
@@ -217,9 +205,6 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
     }
 
     result.sort();
-
-    nih_log!("Result: {:?}", &result);
-
     result
 }
 
@@ -244,8 +229,7 @@ fn call_with_slices(data_a: &InterpolationDataHelper, data_b: &InterpolationData
     generate_interpolation_data_aux(new_data_a, new_data_b)
 }
 
-
- // if same length or gnsm all 0
+// if same length or gnsm all 0
 // -> append 0.0 in the end if necessary
 // else:
 // if all values are None, check for same starttimes (this is only necessary once)
