@@ -111,6 +111,11 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
     let no_strata_left_b = data_b.gnsm.iter().all(|&x| x == *data_a.gnsm.get(0).unwrap_or(&0));
     let mut result = IndexPairs::with_len(max_len);
 
+    nih_log!("durs a: {:?}", data_a.durations);
+    nih_log!("offset a: {:?}", data_a.offset);
+    nih_log!("durs b: {:?}", data_b.durations);
+    nih_log!("offset b: {:?}", data_b.offset);
+
     // Apply one of the methods below (either complete result or match some indices),
     // then call recursively with empty subsections
 
@@ -156,24 +161,52 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
 
     result.sort();
 
+    nih_dbg!(data_a.offset);
+    nih_dbg!(data_b.offset);
     nih_log!("sorted: {:?}", &result);
 
     let mut last_a = data_a.offset;
     let mut last_b = data_b.offset;
+    let mut flag = false;
     let mut subseqs: IndexPairs = IndexPairs::default();
     for (x, y) in result.iter() {
         if let (Some(a), Some(b)) = (x, y) {
-            if let Some(mut subseq) = recursive_call(&data_a, &data_b, *a, last_a, *b, last_b) {
-                subseqs.append(&mut subseq)
+            let diff_a = a - last_a;
+            let diff_b = b - last_b;
+
+            if diff_a.max(diff_b) > if flag { 1 } else { 0 } {
+                nih_log!("during");
+                nih_dbg!(flag);
+                subseqs.append(&mut call_with_slices(&data_a, &data_b,
+                                                     if flag { last_a + 1} else { last_a } - data_a.offset,
+                                                     if flag { last_b + 1} else { last_b } - data_b.offset,
+                                                     if flag { diff_a - 1 } else { diff_a },
+                                                     if flag { diff_b - 1 } else { diff_b },));
             }
 
             last_a = *a;
             last_b = *b;
+            flag = true;
+        }
+        if let (Some(_), None) = (x, y) {
+            last_a += 1;
+        }
+        if let (None, Some(_)) = (x, y) {
+            last_b += 1;
         }
     }
 
-    if let Some(mut subseq) = recursive_call(&data_a, &data_b, data_a.len, last_a, data_b.len, last_b) {
-        subseqs.append(&mut subseq)
+    let diff_a = data_a.len + data_a.offset - last_a;
+    let diff_b = data_b.len + data_b.offset - last_b;
+
+    if diff_a.max(diff_b) > if flag { 1 } else { 0 } {
+        nih_log!("in the end");
+        nih_dbg!(flag);
+        subseqs.append(&mut call_with_slices(&data_a, &data_b,
+                                             if flag { last_a + 1} else { last_a } - data_a.offset,
+                                             if flag { last_b + 1} else { last_b } - data_b.offset,
+                                             if flag { diff_a - 1 } else { diff_a },
+                                             if flag { diff_b - 1 } else { diff_b },));
     }
 
     subseqs.reverse();
@@ -185,36 +218,32 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
 
     result.sort();
 
-    nih_log!("the data: {:?}", &result);
+    nih_log!("Result: {:?}", &result);
 
     result
 }
 
-fn recursive_call(data_a: &InterpolationDataHelper, data_b: &InterpolationDataHelper, a: usize, last_a: usize, b: usize, last_b: usize) -> Option<IndexPairs> {
-
+fn call_with_slices(data_a: &InterpolationDataHelper, data_b: &InterpolationDataHelper, start_a: usize, start_b: usize, len_a: usize, len_b: usize) -> IndexPairs {
     nih_dbg!("Recursive call:");
-
-    let diff_a = a.saturating_sub(last_a);
-    let diff_b = b.saturating_sub(last_b);
-
-    if diff_a > 1 || diff_b > 1 {
-        let new_data_a = InterpolationDataHelper {
-            durations: &data_a.durations[last_a+1..a],
-            starts: &data_a.starts[last_a+1..a],
-            gnsm: &data_a.gnsm[last_a+1..a],
-            len: diff_a - 1,
-            offset: last_a+1,
-        };
-        let new_data_b = InterpolationDataHelper {
-            durations: &data_b.durations[last_b+1..b],
-            starts: &data_b.starts[last_b+1..b],
-            gnsm: &data_b.gnsm[last_b+1..b],
-            len: diff_b - 1,
-            offset: last_b+1,
-        };
-        Some(generate_interpolation_data_aux(new_data_a, new_data_b))
-    } else { None }
+    let end_a = start_a + len_a;
+    let new_data_a = InterpolationDataHelper {
+        durations: &data_a.durations[start_a..end_a],
+        starts: &data_a.starts[start_a..end_a],
+        gnsm: &data_a.gnsm[start_a..end_a],
+        len: len_a,
+        offset: start_a + data_a.offset,
+    };
+    let end_b = start_b + len_b;
+    let new_data_b = InterpolationDataHelper {
+        durations: &data_b.durations[start_b..end_b],
+        starts: &data_b.starts[start_b..end_b],
+        gnsm: &data_b.gnsm[start_b..end_b],
+        len: len_b,
+        offset: start_b + data_b.offset,
+    };
+    generate_interpolation_data_aux(new_data_a, new_data_b)
 }
+
 
  // if same length or gnsm all 0
 // -> append 0.0 in the end if necessary

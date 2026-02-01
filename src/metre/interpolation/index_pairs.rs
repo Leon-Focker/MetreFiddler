@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::ops::{Deref, DerefMut};
 
+/// TODO doc
 #[derive(Debug, Default)]
 pub struct IndexPairs {
     data: Vec<(Option<usize>, Option<usize>)>,
