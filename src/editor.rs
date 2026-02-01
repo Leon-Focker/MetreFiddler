@@ -5,7 +5,7 @@ use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::Ordering::SeqCst;
 use atomic_float::AtomicF32;
-use nih_plug::nih_log;
+use nih_plug::{nih_dbg, nih_log};
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
 use crate::gui::param_binding::ParamBinding;
@@ -55,6 +55,7 @@ pub(crate) struct Data {
     pub(crate) last_input_is_valid: bool,
     pub(crate) max_threshold: usize,
     pub(crate) display_metre_info: bool,
+    pub(crate) display_metre_validity: bool,
     pub(crate) displayed_position: Arc<AtomicF32>,
     pub(crate) check_for_phase_reset_toggle: bool,   // this is toggled for every frame until the phase_reset button has been reset
 }
@@ -67,6 +68,7 @@ pub enum MetreFiddlerEvent {
     RevertPhaseReset,
     ToggleCheckForPhaseReset,
     ToggleAB,
+    ShowValidity(bool),
 }
 
 impl Model for Data {
@@ -151,6 +153,10 @@ impl Model for Data {
                     self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle; 
                 }
             }
+            MetreFiddlerEvent::ShowValidity(show) => {
+                nih_dbg!("show validity: {}", show);
+                self.display_metre_validity = *show;
+            }
         });
     }
 }
@@ -179,6 +185,7 @@ pub(crate) fn create(
             max_threshold: metre_data_a.max.max(metre_data_b.max),
             display_metre_info: false,
             display_b: false,
+            display_metre_validity: true,
             displayed_position: params.displayed_position.clone(),
             check_for_phase_reset_toggle: false,
             interpolation_data_snapshot: params.interpolation_data.lock().unwrap().clone(),
@@ -481,14 +488,19 @@ fn lower_part(cx: &mut Context) {
             // Metre Input for A or B
             Binding::new(cx, Data::display_b, |cx, display| {
                 if display.get(cx) {
-                    Textbox::new(cx, Data::text_input_b)
+                    Textbox::new(cx, Data::text_input_b).on_edit(|cx, _|
+                        cx.emit(MetreFiddlerEvent::ShowValidity(false)))
                         .on_submit(|cx, text, _| {
+                            cx.emit(MetreFiddlerEvent::ShowValidity(true));
                             cx.emit(MetreFiddlerEvent::UpdateString(text, true));
                         })
                         .width(Stretch(3.0));
                 } else {
                     Textbox::new(cx, Data::text_input_a)
+                        .on_edit(|cx, _|
+                        cx.emit(MetreFiddlerEvent::ShowValidity(false)))
                         .on_submit(|cx, text, _| {
+                            cx.emit(MetreFiddlerEvent::ShowValidity(true));
                             cx.emit(MetreFiddlerEvent::UpdateString(text, false));
                         })
                         .width(Stretch(3.0));
@@ -497,13 +509,17 @@ fn lower_part(cx: &mut Context) {
 
             // is valid
             VStack::new(cx, |cx| {
-                Binding::new(cx, Data::last_input_is_valid, |cx, is_valid|{
-                    let is_valid = is_valid.get(cx);
-                    Label::new(cx, if is_valid { "✔️" } else { "❌" })
-                        .position_type(PositionType::Absolute)
-                        .top(Pixels(5.0))
-                        .left(Pixels(10.0));
-                });
+                Binding::new(cx, Data::display_metre_validity, |cx, display| {
+                    if display.get(cx) {
+                        Binding::new(cx, Data::last_input_is_valid, |cx, is_valid|{
+                            let is_valid = is_valid.get(cx);
+                            Label::new(cx, if is_valid { "✔️" } else { "❌" })
+                                .position_type(PositionType::Absolute)
+                                .top(Pixels(5.0))
+                                .left(Pixels(10.0));
+                        });
+                    }
+                })
             });
         });
 
