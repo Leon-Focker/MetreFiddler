@@ -1,11 +1,9 @@
-use nih_plug::{nih_dbg, nih_log, nih_trace};
 use serde::{Deserialize, Serialize};
 use vizia_plug::vizia::prelude::Data;
 use crate::metre::interpolation::index_pairs::IndexPairs;
 use crate::util::{approx_eq, get_start_times};
 
 // TODO works for simple metrical hierarchies, test for more complex cases!
-// TODO This file is kind of a mess!
 
 /// Holds pairs of durations (one for each of two MetreDatas). If one metric structure has more
 /// beats than the other, some of its beats will be paired with 0.0.
@@ -78,7 +76,7 @@ fn pair_identical_start_times(result: &mut IndexPairs, data_a: &InterpolationDat
 fn pair_higher_stratum_by_time(data_a: &InterpolationDataHelper, data_b: &InterpolationDataHelper)  -> (Option<usize>, Option<usize>) {
     // find the indices which belong to the highest stratum
     let highest_stratum = *data_a.gnsm.iter().max().unwrap_or(&1);
-    let idx_a = data_a.gnsm.iter().rposition(|&x| x == highest_stratum).expect("something went wrong in fn pair_higher_stratum_by_time");
+    let idx_a = data_a.gnsm.iter().rposition(|&x| x == highest_stratum).unwrap_or(data_a.gnsm.len() -1);
     let start_time_a = data_a.starts[idx_a];
     // get index for Start in B that's closest to start_time_a
     let idx_b = data_b.starts.iter()
@@ -92,12 +90,12 @@ fn pair_higher_stratum_by_time(data_a: &InterpolationDataHelper, data_b: &Interp
 }
 
 /// Pair the beats with the highest metrical value from each set of durations.
-fn pair_highest_stratus (data_a: &InterpolationDataHelper, data_b: &InterpolationDataHelper) -> (Option<usize>, Option<usize>) {
+fn pair_highest_stratus (data_a: &InterpolationDataHelper, data_b: &InterpolationDataHelper) -> (Option<usize>, Option<usize>){
     // find the indices which belong to the highest stratus
     let highest_stratum_a = *data_a.gnsm.iter().max().unwrap_or(&1);
-    let idx_a = data_a.gnsm.iter().rposition(|&x| x == highest_stratum_a).expect("something went wrong in fn pair_highest_stratus ");
+    let idx_a = data_a.gnsm.iter().rposition(|&x| x == highest_stratum_a).unwrap_or(data_a.gnsm.len() -1);
     let highest_stratum_b = *data_b.gnsm.iter().max().unwrap_or(&1);
-    let idx_b = data_b.gnsm.iter().rposition(|&x| x == highest_stratum_b).expect("something went wrong in fn pair_highest_stratus ");
+    let idx_b = data_b.gnsm.iter().rposition(|&x| x == highest_stratum_b).unwrap_or(data_b.gnsm.len() -1);
 
     (Some(idx_a + data_a.offset), Some(idx_b + data_b.offset))
 }
@@ -117,33 +115,27 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
         || data_a.durations.is_empty()
         || data_b.durations.is_empty()
         || (no_strata_left_a && no_strata_left_b) {
-        nih_dbg!("simple!");
         result.ascending_indices_with_padding(max_len, data_a.len, data_b.len, data_a.offset, data_b.offset);
     } else {
         // try finding pairs via similar start-times, only try this once (when offsets = 0), because else the first will always match
         if data_a.offset == 0 && data_b.offset == 0 {
-            nih_dbg!("start times");
             pair_identical_start_times(&mut result, &data_a, &data_b);
         }
         // If difference in length is just 1, append 0.0, else look for a more complicated method to match some pairs
         else if result.all_free() &&
             data_a.len.abs_diff(data_b.len) == 1 {
-            nih_dbg!("difference of 1");
             result.ascending_indices_with_padding(max_len, data_a.len, data_b.len, data_a.offset, data_b.offset);
         } else {
             // If there is metrical hierarchy left in only one of the sections, find a match from the
             // highest stratum via start-time
             if !no_strata_left_a && no_strata_left_b {
-                nih_dbg!("option A:");
                 result.set_first_free(pair_higher_stratum_by_time(&data_a, &data_b));
             } else if no_strata_left_a && !no_strata_left_b {
-                nih_dbg!("Option B:");
                 let tmp = pair_higher_stratum_by_time(&data_a, &data_b);
                 result.set_first_free((tmp.1, tmp.0));
             }
             // If there is metrical hierarchy left in both sections, match beats from the same stratum
             else {
-                nih_dbg!("Option C:");
                 result.set_first_free(pair_highest_stratus(&data_a, &data_b));
             }
         }
@@ -209,7 +201,6 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
 }
 
 fn call_with_slices(data_a: &InterpolationDataHelper, data_b: &InterpolationDataHelper, start_a: usize, start_b: usize, len_a: usize, len_b: usize) -> IndexPairs {
-    nih_dbg!("Recursive call:");
     let end_a = start_a + len_a;
     let new_data_a = InterpolationDataHelper {
         durations: &data_a.durations[start_a..end_a],
