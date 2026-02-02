@@ -428,9 +428,9 @@ fn duration_position(cx: &mut Context) {
                         |cx, interpolate| {
                             ParamTicks::new(
                                 cx,
+                                200.0,
                                 Data::interpolation_data_snapshot,
                                 interpolate)
-                                .width(Pixels(200.0))
                                 .height(Pixels(20.0));
                         }).alignment(Alignment::Center);
                 })

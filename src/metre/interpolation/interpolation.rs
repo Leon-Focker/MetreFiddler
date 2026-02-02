@@ -7,6 +7,7 @@ use crate::util::{approx_eq, get_start_times};
 
 /// Holds pairs of durations (one for each of two MetreDatas). If one metric structure has more
 /// beats than the other, some of its beats will be paired with 0.0.
+/// TODO .data field would be better, no?
 #[derive(Debug, Serialize, Deserialize, Clone, Data)]
 pub struct InterpolationData {
     pub value: Vec<(f32, f32)>,

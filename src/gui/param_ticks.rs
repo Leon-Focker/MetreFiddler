@@ -10,6 +10,7 @@ pub struct ParamTicks {}
 impl ParamTicks {
     pub fn new<L>(
         cx: &mut Context,
+        width_pixels: f32,
         interpolation_data: L,
         interpolate: f32,
     ) -> Handle<'_, Self>
@@ -21,14 +22,11 @@ impl ParamTicks {
                 cx,
                 |cx| {
                     Binding::new(cx, interpolation_data, move |cx, data| {
-                        Self::ticks(
-                            cx,
-                            data,
-                            interpolate,
-                        );
+                        Self::ticks(cx, data, interpolate, width_pixels);
                     });
                 }
             )
+            .width(Pixels(width_pixels))
             .hoverable(false)
     }
 
@@ -36,6 +34,7 @@ impl ParamTicks {
         cx: &mut Context,
         interpolation_data: impl Lens<Target = InterpolationData>,
         interpolate: f32,
+        width_px: f32,
     ) {
         HStack::new(cx, |cx| {
             Element::new(cx)
@@ -43,23 +42,37 @@ impl ParamTicks {
                 .width(Pixels(1.0))
                 .height(Pixels(10.0));
 
-            for (dur_a, dur_b) in interpolation_data.get(cx).value {
-                let width = dry_wet(dur_a, dur_b, interpolate);
-                let mut draw = width > 0.0;
+            let durations: Vec<f32> = interpolation_data
+                .get(cx)
+                .value
+                .iter()
+                .filter_map(|&(a, b)| {
+                    let x = dry_wet(a, b, interpolate);
+                    (x > 0.0).then_some(x)
+                })
+                .collect();
+            let sum: f32 = durations.iter().sum();
+            let nr_of_ticks = durations.len();
+            let mut current_sum: f32 = 0.0;
+            let mut last_sum: f32 = 0.0;
+            let nr_of_pixels = width_px.round() as usize - nr_of_ticks - 2;
 
-                if draw {
-                    Element::new(cx)
-                        .width(Stretch(width))
-                        .height(Pixels(10.0));
-                }
+            for dur in durations {
+                let float_pixels: f32 = dur / sum * nr_of_pixels as f32;
+                current_sum += float_pixels;
+                let width_in_pixels: f32 = current_sum.round() - last_sum.round();
+                last_sum += float_pixels;
+
+                // Draw the empty Space and the Ticks
+                Element::new(cx)
+                    .width(Pixels(width_in_pixels))
+                    .height(Pixels(10.0));
 
                 // TODO would we want the ticks to be different heights depending on indisp_val?
-                if draw {
-                    Element::new(cx)
-                        .background_color(Color::black())
-                        .width(Pixels(1.0))
-                        .height(Pixels(10.0));
-                }
+                Element::new(cx)
+                    .background_color(Color::black())
+                    .width(Pixels(1.0))
+                    .height(Pixels(10.0));
             }
         })
             .padding_left(Pixels(1.0))
