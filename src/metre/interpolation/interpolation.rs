@@ -1,3 +1,4 @@
+use nih_plug::{nih_dbg, nih_log};
 use serde::{Deserialize, Serialize};
 use vizia_plug::vizia::prelude::Data;
 use crate::metre::interpolation::index_pairs::IndexPairs;
@@ -75,6 +76,8 @@ fn pair_identical_start_times(result: &mut IndexPairs, data_a: &InterpolationDat
 /// While durations A does have some metrical hierarchy indicated by gnsm_a, durations B does not.
 /// Find the beat with the highest metrical value in durations A and pair it with the closest beat from B by start-time
 fn pair_higher_stratum_by_time(data_a: &InterpolationDataHelper, data_b: &InterpolationDataHelper)  -> (Option<usize>, Option<usize>) {
+    let no_strata_left_b = data_b.gnsm.iter().all(|&x| x == *data_b.gnsm.get(0).unwrap_or(&0));
+    assert!(no_strata_left_b);
     // find the indices which belong to the highest stratum
     let highest_stratum = *data_a.gnsm.iter().max().unwrap_or(&1);
     let idx_a = data_a.gnsm.iter().rposition(|&x| x == highest_stratum).unwrap_or(data_a.gnsm.len() -1);
@@ -105,7 +108,7 @@ fn pair_highest_stratus (data_a: &InterpolationDataHelper, data_b: &Interpolatio
 fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: InterpolationDataHelper) -> IndexPairs {
     let max_len = data_a.len.max(data_b.len);
     let no_strata_left_a = data_a.gnsm.iter().all(|&x| x == *data_a.gnsm.get(0).unwrap_or(&0));
-    let no_strata_left_b = data_b.gnsm.iter().all(|&x| x == *data_a.gnsm.get(0).unwrap_or(&0));
+    let no_strata_left_b = data_b.gnsm.iter().all(|&x| x == *data_b.gnsm.get(0).unwrap_or(&0));
     let mut result = IndexPairs::new_with_len(max_len);
 
     // Apply one of the methods below (either complete result or match some indices),
@@ -132,8 +135,8 @@ fn generate_interpolation_data_aux(data_a: InterpolationDataHelper, data_b: Inte
             if !no_strata_left_a && no_strata_left_b {
                 result.set_first_free(pair_higher_stratum_by_time(&data_a, &data_b));
             } else if no_strata_left_a && !no_strata_left_b {
-                let tmp = pair_higher_stratum_by_time(&data_a, &data_b);
-                result.set_first_free((tmp.1, tmp.0));
+                let (tmp_b, tmp_a) = pair_higher_stratum_by_time(&data_b, &data_a);
+                result.set_first_free((tmp_a, tmp_b));
             }
             // If there is metrical hierarchy left in both sections, match beats from the same stratum
             else {
