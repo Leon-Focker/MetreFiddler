@@ -135,19 +135,21 @@ impl MetreFiddler {
         let same_length: bool = metric_data_a.durations.len() == metric_data_b.durations.len();
 
         let mut current_beat_duration_sum: f32 = 0.0;
+        let mut current_interpol_data_idx: usize = 0;
         let mut current_beat_idx: usize = 0;
 
         // do this instead of using decider(), so that we can interpolate the start times of
         // two metric definitions without memory alloc.
         loop {
-            let (dur_a, dur_b) = *interpolation_data.value.get(current_beat_idx).unwrap_or(&(0.0, 0.0));
+            let (dur_a, dur_b) = *interpolation_data.value.get(current_interpol_data_idx).unwrap_or(&(1.0, 1.0));
             let dur = dry_wet(dur_a, dur_b, self.interpolate);
             current_beat_duration_sum += dur;
-            if current_beat_idx >= max_len || current_beat_duration_sum >= self.get_normalized_position_in_bar() {
+            if current_interpol_data_idx >= max_len || current_beat_duration_sum >= self.get_normalized_position_in_bar() {
                 current_beat_duration_sum -= dur;
                 break
             } else {
-                current_beat_idx += 1;
+                current_interpol_data_idx += 1;
+                if dur > 0.0 { current_beat_idx += 1 }
             }
         };
 
