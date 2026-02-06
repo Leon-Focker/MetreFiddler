@@ -55,7 +55,7 @@ impl ParamTicks {
             let nr_of_ticks = durations.len();
             let mut current_sum: f32 = 0.0;
             let mut last_sum: f32 = 0.0;
-            let nr_of_pixels = width_px.round() as usize - nr_of_ticks - 2;
+            let nr_of_pixels = (width_px.round() as usize).saturating_sub(2).saturating_sub(nr_of_ticks);
 
             for dur in durations {
                 let float_pixels: f32 = dur / sum * nr_of_pixels as f32;
