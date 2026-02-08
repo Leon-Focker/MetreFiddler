@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::Ordering::SeqCst;
 use atomic_float::AtomicF32;
 use nih_plug::{nih_dbg, nih_log};
+use serde::de::Unexpected::Str;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
 use crate::gui::param_binding::ParamBinding;
@@ -17,6 +18,8 @@ use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
 use crate::gui::param_ticks::ParamTicks;
 use crate::metre::interpolation::interpolation::*;
 use crate::metre_data::parse_input;
+
+
 
 // TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and
 //  sometimes it doesn't. (only on linux)
@@ -48,20 +51,33 @@ const NEW_STYLE: &str = r#"
 #[derive(Lens, Clone)]
 pub(crate) struct Data {
     pub(crate) params: Arc<MetreFiddlerParams>,
+    pub(crate) screen: MetreFiddlerScreen,
     pub(crate) interpolation_data_snapshot: InterpolationData,
     pub(crate) text_input_a: String,
     pub(crate) text_input_b: String,
     pub(crate) display_b: bool,
     pub(crate) last_input_is_valid: bool,
     pub(crate) max_threshold: usize,
-    pub(crate) display_metre_info: bool,
     pub(crate) display_metre_validity: bool,
     pub(crate) displayed_position: Arc<AtomicF32>,
     pub(crate) check_for_phase_reset_toggle: bool,   // this is toggled for every frame until the phase_reset button has been reset
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MetreFiddlerScreen {
+    Main,
+    Settings,
+    Info,
+}
+
+impl vizia_plug::vizia::prelude::Data for MetreFiddlerScreen {
+    fn same(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
 #[derive(Debug, Clone)]
-pub enum MetreFiddlerEvent {
+pub(crate) enum MetreFiddlerEvent {
     UpdateString(String, bool),
     ToggleMetreInfo,
     TriggerPhaseReset,
@@ -124,7 +140,10 @@ impl Model for Data {
                 };
             }
             MetreFiddlerEvent::ToggleMetreInfo => {
-                self.display_metre_info = !self.display_metre_info;
+                match self.screen {
+                    MetreFiddlerScreen::Info => self.screen = MetreFiddlerScreen::Main,
+                    _ =>  self.screen = MetreFiddlerScreen::Info,
+                }
             }
             MetreFiddlerEvent::ToggleAB => {
                 self.display_b = !self.display_b;
@@ -154,7 +173,6 @@ impl Model for Data {
                 }
             }
             MetreFiddlerEvent::ShowValidity(show) => {
-                nih_dbg!("show validity: {}", show);
                 self.display_metre_validity = *show;
             }
         });
@@ -179,11 +197,11 @@ pub(crate) fn create(
         
         Data {
             params: params.clone(),
+            screen: MetreFiddlerScreen::Main,
             text_input_a: metre_data_a.input.clone(),
             text_input_b: metre_data_b.input.clone(),
             last_input_is_valid: true,
             max_threshold: metre_data_a.max.max(metre_data_b.max),
-            display_metre_info: false,
             display_b: false,
             display_metre_validity: true,
             displayed_position: params.displayed_position.clone(),
@@ -197,30 +215,35 @@ pub(crate) fn create(
         Binding::new(cx, Data::check_for_phase_reset_toggle, |cx, _was_reset| {
             cx.emit(MetreFiddlerEvent::ToggleCheckForPhaseReset);
         });
-        
+
         VStack::new(cx, |cx| {
-            ZStack::new(cx, |cx| {
-                // The upper part of the Plugin
-                upper_part(cx);
-                
-                // Information text displayed over plugin
-                Binding::new(cx, Data::display_metre_info, |cx, display| {
-                    if display.get(cx) {
-                        Element::new(cx)
-                            .background_color(RGBA::rgba(250, 250, 250, 255))
-                            .opacity(1.0);
-                        Label::new(cx, "")
-                            .text(PLUGIN_INFO_TEXT)
-                            .top(Pixels(5.0))
-                            // better too small than clipping
-                            .font_size(12.0);
+
+            Binding::new(cx, Data::screen, |cx, visible_screen| {
+                match visible_screen.get(cx) {
+                    MetreFiddlerScreen::Settings => {
+
+                    },
+                    MetreFiddlerScreen::Main => {
+                        // Upper Part of the Plugin
+                        VStack::new(cx, |cx| {
+                            upper_part(cx);
+                        })
+                            .height(Stretch(3.0));
+                        // Lower Part of the Plugin
+                        lower_part(cx);
                     }
-                })
-            })
-                .height(Stretch(3.0));
-            
-            // Lower Part of the Plugin
-            lower_part(cx);
+                    MetreFiddlerScreen::Info => {
+                        // Upper Part of the Plugin
+                        VStack::new(cx, |cx| {
+                            metre_info_screen(cx);
+                        })
+                            .height(Stretch(3.0));
+                        // Lower Part of the Plugin
+                        lower_part(cx);
+                    }
+                };
+            });
+
         })
             // I have no clue, why I have to hardcode this? But without this, the HStacks are
             // not stretched properly
@@ -228,6 +251,17 @@ pub(crate) fn create(
 
         //  ResizeHandle::new(cx);
     })
+}
+
+fn metre_info_screen(cx: &mut Context) {
+    Element::new(cx)
+        .background_color(RGBA::rgba(250, 250, 250, 255))
+        .opacity(1.0);
+    Label::new(cx, "")
+        .text(PLUGIN_INFO_TEXT)
+        .top(Pixels(5.0))
+        // better too small than clipping
+        .font_size(12.0);
 }
 
 // Upper Part of the Plugin
