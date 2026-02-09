@@ -62,6 +62,15 @@ pub struct MetreFiddlerParams {
 
     #[id = "send_midi"]
     pub send_midi: BoolParam,
+
+    #[persist = "interpolate_durations"]
+    pub interpolate_durations: AtomicBool,
+
+    #[persist = "many_velocities"]
+    pub many_velocities: AtomicBool,
+
+    #[persist = "midi_out_one_note"]
+    pub midi_out_one_note: AtomicBool,
 }
 
 impl Default for MetreFiddlerParams {
@@ -156,6 +165,12 @@ impl Default for MetreFiddlerParams {
             displayed_position: Arc::new(AtomicF32::new(0.0)),
 
             reset_info: Arc::new(AtomicBool::new(false)),
+
+            interpolate_durations: AtomicBool::from(true),
+
+            many_velocities: AtomicBool::from(true),
+
+            midi_out_one_note: AtomicBool::from(false),
         }
     }
 }
