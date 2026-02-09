@@ -7,14 +7,13 @@ use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
 use atomic_float::AtomicF32;
 use nih_plug::{nih_dbg, nih_log};
-use serde::de::Unexpected::Str;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
 use crate::gui::param_binding::ParamBinding;
 use crate::gui::param_display_knob::ParamDisplayKnob;
 use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
 use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
-use crate::gui::param_label::{ParamLabel, };
+use crate::gui::param_label::{ParamLabel};
 use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
 use crate::gui::param_ticks::ParamTicks;
 use crate::metre::interpolation::interpolation::*;
@@ -53,6 +52,7 @@ const NEW_STYLE: &str = r#"
 pub(crate) struct Data {
     pub(crate) params: Arc<MetreFiddlerParams>,
     pub(crate) screen: MetreFiddlerScreen,
+    pub(crate) settings: Settings,
     pub(crate) interpolation_data_snapshot: InterpolationData,
     pub(crate) text_input_a: String,
     pub(crate) text_input_b: String,
@@ -62,6 +62,19 @@ pub(crate) struct Data {
     pub(crate) display_metre_validity: bool,
     pub(crate) displayed_position: Arc<AtomicF32>,
     pub(crate) check_for_phase_reset_toggle: bool,   // this is toggled for every frame until the phase_reset button has been reset
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct Settings {
+    pub(crate) interpolate_durations: bool,
+    pub(crate) many_velocities: bool,
+    pub(crate) midi_out_one_note: bool,
+}
+
+impl vizia_plug::vizia::prelude::Data for Settings {
+    fn same(&self, other: &Self) -> bool {
+        self == other
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -81,6 +94,10 @@ impl vizia_plug::vizia::prelude::Data for MetreFiddlerScreen {
 pub(crate) enum MetreFiddlerEvent {
     UpdateString(String, bool),
     ToggleMetreInfo,
+    ToggleSettings,
+    ToggleInterpolateDurs,
+    ToggleManyVelocities,
+    ToggleMidiOutput,
     TriggerPhaseReset,
     RevertPhaseReset,
     ToggleCheckForPhaseReset,
@@ -146,6 +163,24 @@ impl Model for Data {
                     _ =>  self.screen = MetreFiddlerScreen::Info,
                 }
             }
+            MetreFiddlerEvent::ToggleSettings => {
+                match self.screen {
+                    MetreFiddlerScreen::Settings => self.screen = MetreFiddlerScreen::Main,
+                    _ =>  self.screen = MetreFiddlerScreen::Settings,
+                }
+            }
+            MetreFiddlerEvent::ToggleInterpolateDurs => {
+                self.params.interpolate_durations.store(!self.params.interpolate_durations.load(SeqCst), SeqCst);
+                self.settings.interpolate_durations = !self.settings.interpolate_durations;
+            }
+            MetreFiddlerEvent::ToggleManyVelocities => {
+                self.params.many_velocities.store(!self.params.many_velocities.load(SeqCst), SeqCst);
+                self.settings.many_velocities = !self.settings.many_velocities;
+            }
+            MetreFiddlerEvent::ToggleMidiOutput => {
+                self.params.midi_out_one_note.store(!self.params.midi_out_one_note.load(SeqCst), SeqCst);
+                self.settings.midi_out_one_note = !self.settings.midi_out_one_note;
+            }
             MetreFiddlerEvent::ToggleAB => {
                 self.display_b = !self.display_b;
             }
@@ -195,10 +230,16 @@ pub(crate) fn create(
 
         let metre_data_a = params.metre_data_a.lock().unwrap();
         let metre_data_b = params.metre_data_b.lock().unwrap();
+        let settings = Settings {
+            interpolate_durations: params.interpolate_durations.load(SeqCst),
+            many_velocities: params.many_velocities.load(SeqCst),
+            midi_out_one_note: params.midi_out_one_note.load(SeqCst),
+        };
         
         Data {
             params: params.clone(),
             screen: MetreFiddlerScreen::Main,
+            settings,
             text_input_a: metre_data_a.input.clone(),
             text_input_b: metre_data_b.input.clone(),
             last_input_is_valid: true,
@@ -222,7 +263,7 @@ pub(crate) fn create(
             Binding::new(cx, Data::screen, |cx, visible_screen| {
                 match visible_screen.get(cx) {
                     MetreFiddlerScreen::Settings => {
-
+                        settings_window(cx);
                     },
                     MetreFiddlerScreen::Main => {
                         // Upper Part of the Plugin
@@ -619,6 +660,8 @@ fn lower_part(cx: &mut Context) {
                     ZStack::new(cx, |cx| {
                         Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0));
                     })
+                        .hoverable(true)
+                        .on_press(|cx|cx.emit(MetreFiddlerEvent::ToggleSettings))
                         .width(Pixels(24.0))
                         .height(Pixels(24.0));
                     Element::new(cx)
@@ -631,5 +674,48 @@ fn lower_part(cx: &mut Context) {
         })
             .alignment(Alignment::TopCenter)
             .height(Stretch(2.0));
+    });
+}
+
+fn settings_window(cx: &mut Context) {
+    // Settings
+    ScrollView::new(cx, |cx| {
+        Binding::new(cx, Data::settings, |cx, settings| {
+            Button::new(cx, |cx|
+                if settings.get(cx).interpolate_durations {
+                    Label::new(cx, "Interpolate Durations")
+                } else {
+                    Label::new(cx, "Don't Interpolate Durations")
+                })
+                .on_press(|cx| {cx.emit(MetreFiddlerEvent::ToggleInterpolateDurs)});
+            Button::new(cx, |cx|
+                if settings.get(cx).many_velocities {
+                    Label::new(cx, "Many Velocities")
+                } else {
+                    Label::new(cx, "Not Many Velocities")
+                })
+                .on_press(|cx| {cx.emit(MetreFiddlerEvent::ToggleManyVelocities)});
+            Button::new(cx, |cx|
+                if settings.get(cx).midi_out_one_note {
+                    Label::new(cx, "Output just one Note")
+                } else {
+                    Label::new(cx, "Output many notes")
+                })
+                .on_press(|cx| {cx.emit(MetreFiddlerEvent::ToggleMidiOutput)});
+        })
+    })
+        .width(Stretch(1.0))
+        .height(Stretch(1.0));
+
+    HStack::new(cx, |cx| {
+        ZStack::new(cx, |cx| {
+            Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0)).cursor(CursorIcon::Hand);
+        })
+            .hoverable(true)
+            .on_press(|cx|cx.emit(MetreFiddlerEvent::ToggleSettings))
+            .width(Pixels(24.0))
+            .height(Pixels(24.0));
+        Element::new(cx)
+            .width(Pixels(24.0));
     });
 }
