@@ -2,7 +2,8 @@ use nih_plug::prelude::{Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
 use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
-use std::sync::{Arc, Mutex};
+use vizia_plug::vizia::icons::ICON_SETTINGS;
+use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
 use atomic_float::AtomicF32;
 use nih_plug::{nih_dbg, nih_log};
@@ -243,13 +244,13 @@ pub(crate) fn create(
                     }
                 };
             });
-
         })
             // I have no clue, why I have to hardcode this? But without this, the HStacks are
             // not stretched properly
           .width(Pixels(500.0));
 
-        //  ResizeHandle::new(cx);
+        // this doesn't work?
+        // ResizeHandle::new(cx).background_color(Color::red());
     })
 }
 
@@ -505,8 +506,10 @@ fn duration_position(cx: &mut Context) {
 
 // Lower Part of the Plugin, containing the Metre Definition
 fn lower_part(cx: &mut Context) {
+    // The entire lower part
     VStack::new(cx, |cx| {
-        // The Text, info and feedback:
+
+        // First Row: Textfield, info and feedback:
         HStack::new(cx, |cx| {
             // Info Button
             VStack::new(cx, |cx| {
@@ -557,61 +560,74 @@ fn lower_part(cx: &mut Context) {
             });
         });
 
+        // Second Row: Send Midi, Interpolation, Settings
         HStack::new(cx, |cx| {
-            // Send Midi Events?
-            VStack::new(cx, |cx| {
-                ParamButton::new(cx, Data::params, |params| &params.send_midi)
-                    .alignment(Alignment::Center)
-                    .with_label("Send Midi")
-                    .class("red_button")
-                    .width(Pixels(80.0));
-            })
-                .height(Pixels(50.0))
-                .alignment(Alignment::Center);
-
-            // Switching A & B
+            // Extra HStack with height 50p for alignment
             HStack::new(cx, |cx| {
-                // Switch between A and B
-                Binding::new(cx, Data::display_b, |cx, display| {
-                    Button::new(cx,
-                                |cx|
-                                    if display.get(cx) {
-                                        Label::new(cx, "Switch to A")
-                                    } else {
-                                        Label::new(cx, "Switch to B")
-                                    }
-                    )
-                        .on_press(|cx| {
-                            cx.emit(MetreFiddlerEvent::ToggleAB)
-                        })
-                        .alignment(Alignment::Center);
-                });
-
-                Element::new(cx).width(Pixels(10.0));
-
-                // Interpolation
-                HStack::new(cx, |cx| {
-                    Label::new(cx, "A");
-
-                    Element::new(cx).width(Pixels(10.0));
-
-                    ParamSliderKnob::new(cx, Data::params, |params|
-                        &params.interpolate_a_b)
-                        .height(Pixels(20.0))
-                        .width(Pixels(100.0));
-
-                    Element::new(cx).width(Pixels(10.0));
-
-                    Label::new(cx, "B");
+                // Send Midi Events?
+                VStack::new(cx, |cx| {
+                    ParamButton::new(cx, Data::params, |params| &params.send_midi)
+                        .alignment(Alignment::Center)
+                        .with_label("Send Midi")
+                        .class("red_button")
+                        .width(Pixels(80.0));
                 })
                     .alignment(Alignment::Center);
-            })
-                .alignment(Alignment::Center)
-                .width(Stretch(3.0))
-                .height(Pixels(50.0));
 
-            // This is just for spacing
-            Element::new(cx);
+                // Switching A & B
+                HStack::new(cx, |cx| {
+                    // Switch between A and B
+                    Binding::new(cx, Data::display_b, |cx, display| {
+                        Button::new(cx,
+                                    |cx|
+                                        if display.get(cx) {
+                                            Label::new(cx, "Switch to A")
+                                        } else {
+                                            Label::new(cx, "Switch to B")
+                                        }
+                        )
+                            .on_press(|cx| {
+                                cx.emit(MetreFiddlerEvent::ToggleAB)
+                            })
+                            .alignment(Alignment::Center);
+                    });
+
+                    Element::new(cx).width(Pixels(10.0));
+
+                    // Interpolation
+                    HStack::new(cx, |cx| {
+                        Label::new(cx, "A");
+
+                        Element::new(cx).width(Pixels(10.0));
+
+                        ParamSliderKnob::new(cx, Data::params, |params|
+                            &params.interpolate_a_b)
+                            .height(Pixels(20.0))
+                            .width(Pixels(100.0));
+
+                        Element::new(cx).width(Pixels(10.0));
+
+                        Label::new(cx, "B");
+                    })
+                        .alignment(Alignment::Center);
+                })
+                    .alignment(Alignment::Center)
+                    .width(Stretch(3.0));
+
+                // Settings
+                HStack::new(cx, |cx| {
+                    ZStack::new(cx, |cx| {
+                        Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0));
+                    })
+                        .width(Pixels(24.0))
+                        .height(Pixels(24.0));
+                    Element::new(cx)
+                        .width(Pixels(24.0));
+                })
+                    .width(Stretch(1.0))
+                    .alignment(Alignment::Right);
+            })
+                .height(Pixels(50.0));
         })
             .alignment(Alignment::TopCenter)
             .height(Stretch(2.0));
