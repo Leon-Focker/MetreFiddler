@@ -324,6 +324,7 @@ impl Plugin for MetreFiddler {
             self.bar_pos = self.params.bar_position.smoothed.next_step(elapsed_samples);
             self.interpolate = self.params.interpolate_a_b.smoothed.next_step(elapsed_samples);
         } else {
+            let output_one_pitch = self.params.midi_out_one_note.load(SeqCst);
             // Since the metric duration might change while doing this, maybe it's easiest to just
             // loop through all samples and individually check, whether we want to send a note.
             for sample in 0..buffer_len {
@@ -360,7 +361,7 @@ impl Plugin for MetreFiddler {
                     // Send midi when we haven't already sent a note for this idx
                     if self.last_sent_beat_idx != current_beat_idx as i32 && let_through {
                         let vel =  self.calculate_current_velocity(indisp_val);
-                        let note = 60 + indisp_val as u8;
+                        let note = 60 + if output_one_pitch { 0 } else { indisp_val as u8 };
 
                         context.send_event(
                             NoteEvent::NoteOn {
