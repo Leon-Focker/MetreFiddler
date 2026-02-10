@@ -1,7 +1,7 @@
 use nih_plug::prelude::*;
 use vizia_plug::ViziaState;
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use nih_plug::prelude::SmoothingStyle::Linear;
 use crate::editor;
 use crate::metre_data::{MetreData};
@@ -60,6 +60,9 @@ pub struct MetreFiddlerParams {
     #[id = "interpolate_a_b"]
     pub interpolate_a_b: FloatParam,
 
+    #[persist = "current_nr_of_beats"]
+    pub current_nr_of_beats: AtomicUsize,
+
     #[id = "send_midi"]
     pub send_midi: BoolParam,
 
@@ -104,6 +107,8 @@ impl Default for MetreFiddlerParams {
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             )
                 .with_smoother(Linear(50.0)),
+            
+            current_nr_of_beats: AtomicUsize::new(0),
 
             send_midi: BoolParam::new(
                 "Send midi notes instead",

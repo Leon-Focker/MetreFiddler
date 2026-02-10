@@ -42,15 +42,7 @@ impl ParamTicks {
                 .width(Pixels(1.0))
                 .height(Pixels(10.0));
 
-            let durations: Vec<f32> = interpolation_data
-                .get(cx)
-                .value
-                .iter()
-                .filter_map(|&(a, b)| {
-                    let x = dry_wet(a, b, interpolate);
-                    (x > 0.0).then_some(x)
-                })
-                .collect();
+            let durations: Vec<f32> = interpolation_data.get(cx).get_durations(interpolate).collect();
             let sum: f32 = durations.iter().sum();
             let nr_of_ticks = durations.len();
             let mut current_sum: f32 = 0.0;

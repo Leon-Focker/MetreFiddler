@@ -109,12 +109,31 @@ impl MetreFiddler {
         self.metric_duration *= one_crotchet as f32;
     }
 
+    // TODO this shouldn't be a method
+    fn is_accent(&self, indisp_value: usize) -> bool {
+        let skew = self.vel_skew;
+        let nr_beats = self.params.current_nr_of_beats.load(SeqCst) as f32;
+        let nr_of_accents = ((1.0 - skew) * nr_beats).round() as usize;
+        indisp_value < nr_of_accents
+    }
+
     fn calculate_current_velocity(&self, indisp_value: usize) -> f32 {
         // The current velocity Parameters
         let v_min: f32 = self.vel_min.min(self.vel_max) / 127.0;
         let v_max: f32 = self.vel_max / 127.0;
+        let skew = self.vel_skew;
+        let many_velocities = self.params.many_velocities.load(SeqCst);
         // Velocity in range 0.0 - 1.0,
-        let normalized_vel = (1.0 / (indisp_value + 1) as f32).powf(2.0*(1.0 - self.vel_skew));
+        let normalized_vel =
+            if many_velocities {
+                (1.0 / (indisp_value + 1) as f32).powf(2.0*(1.0 - skew))
+            } else {
+                if self.is_accent(indisp_value) {
+                    v_min
+                } else {
+                    v_max
+                }
+            };
         // rescaled by vel_min and vel_max parameters
         if v_min == v_max {
             v_min
@@ -133,25 +152,30 @@ impl MetreFiddler {
         let interpolation_data = &self.params.interpolation_data.lock().unwrap();
         let max_len = metric_data_a.durations.len().max(metric_data_b.durations.len());
         let same_length: bool = metric_data_a.durations.len() == metric_data_b.durations.len();
+        let mut durations = interpolation_data.get_durations(self.interpolate);
+        let position = self.get_normalized_position_in_bar();
 
         let mut current_beat_duration_sum: f32 = 0.0;
-        let mut current_interpol_data_idx: usize = 0;
         let mut current_beat_idx: usize = 0;
+        let mut nr_beats: usize = 0;
 
-        // do this instead of using decider(), so that we can interpolate the start times of
-        // two metric definitions without memory alloc.
         loop {
-            let (dur_a, dur_b) = *interpolation_data.value.get(current_interpol_data_idx).unwrap_or(&(1.0, 1.0));
-            let dur = dry_wet(dur_a, dur_b, self.interpolate);
-            current_beat_duration_sum += dur;
-            if current_interpol_data_idx >= max_len || current_beat_duration_sum >= self.get_normalized_position_in_bar() {
-                current_beat_duration_sum -= dur;
-                break
+            if let Some(dur) = durations.next() {
+                nr_beats += 1;
+
+                if current_beat_duration_sum + dur >= position {
+                    nr_beats += durations.count();
+                    break;
+                }
+
+                current_beat_duration_sum += dur;
+                current_beat_idx += 1;
             } else {
-                current_interpol_data_idx += 1;
-                if dur > 0.0 { current_beat_idx += 1 }
+                break;
             }
-        };
+        }
+
+        self.params.current_nr_of_beats.store(nr_beats, SeqCst);
 
         let indisp_val_temp = dry_wet(
             *metric_data_a.value.get(current_beat_idx).unwrap_or(&0),
@@ -325,6 +349,7 @@ impl Plugin for MetreFiddler {
             self.interpolate = self.params.interpolate_a_b.smoothed.next_step(elapsed_samples);
         } else {
             let output_one_pitch = self.params.midi_out_one_note.load(SeqCst);
+            let many_velocities = self.params.many_velocities.load(SeqCst);
             // Since the metric duration might change while doing this, maybe it's easiest to just
             // loop through all samples and individually check, whether we want to send a note.
             for sample in 0..buffer_len {
@@ -361,7 +386,16 @@ impl Plugin for MetreFiddler {
                     // Send midi when we haven't already sent a note for this idx
                     if self.last_sent_beat_idx != current_beat_idx as i32 && let_through {
                         let vel =  self.calculate_current_velocity(indisp_val);
-                        let note = 60 + if output_one_pitch { 0 } else { indisp_val as u8 };
+                        let note = 60
+                            + if output_one_pitch {
+                            0
+                        } else if many_velocities {
+                            indisp_val as u8
+                        } else if self.is_accent(indisp_val) {
+                            0
+                        } else {
+                            1
+                        };
 
                         context.send_event(
                             NoteEvent::NoteOn {

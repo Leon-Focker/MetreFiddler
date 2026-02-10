@@ -2,7 +2,7 @@ use nih_plug::{nih_dbg, nih_log};
 use serde::{Deserialize, Serialize};
 use vizia_plug::vizia::prelude::Data;
 use crate::metre::interpolation::index_pairs::IndexPairs;
-use crate::util::{approx_eq, get_start_times};
+use crate::util::{approx_eq, dry_wet, get_start_times};
 
 // TODO works for simple metrical hierarchies, test for more complex cases!
 
@@ -27,6 +27,17 @@ impl Default for InterpolationData {
         Self {
             value: vec![(0.25, 0.25); 4],
         }
+    }
+}
+
+impl InterpolationData {
+    pub fn get_durations(&self, interpolation: f32) -> impl Iterator<Item = f32> + use<'_> {
+        self.value
+            .iter()
+            .filter_map(move |&(a, b)| {
+                let x = dry_wet(a, b, interpolation);
+                (x > 0.0).then_some(x)
+            })
     }
 }
 
