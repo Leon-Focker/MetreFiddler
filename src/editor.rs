@@ -128,6 +128,7 @@ impl Model for Data {
                                     let new_interpolation_data =
                                         generate_interpolation_data(&metre_data.durations, &metre_data_b.durations, &metre_data.gnsm, &metre_data_b.gnsm);
                                     self.interpolation_data_snapshot = new_interpolation_data.clone();
+                                    self.params.current_nr_of_beats.store(new_interpolation_data.clone().get_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
                                     *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
                                 },
                                 Err(err_string) => {
@@ -152,6 +153,7 @@ impl Model for Data {
                                     let new_interpolation_data =
                                         generate_interpolation_data(&metre_data_a.durations, &metre_data.durations, &metre_data_a.gnsm, &metre_data.gnsm);
                                     self.interpolation_data_snapshot = new_interpolation_data.clone();
+                                    self.params.current_nr_of_beats.store(new_interpolation_data.clone().get_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
                                     *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
                                 },
                                 Err(err_string) => {
@@ -338,7 +340,26 @@ fn upper_part(cx: &mut Context) {
                     ParamSliderKnob::new(cx, Data::params, |params|
                         &params.velocity_skew)
                         .set_vertical(true);
-                    Label::new(cx, "skew");
+                    Binding::new(cx, Data::settings, |cx, settings | {
+                        if settings.get(cx).many_velocities {
+                            Label::new(cx, "skew");
+                        } else {
+                            // many ugly bindings because I can't directly bind to params.current_nr_of_beats.
+                            Binding::new(cx, Data::text_input_a, |cx, _| {
+                                Binding::new(cx, Data::text_input_b, |cx, _| {
+                                    ParamBinding::new(cx, Data::params, |params| &params.interpolate_a_b,
+                                                      |cx, _| {
+                                                          let nr_beats = Data::params.get(cx).current_nr_of_beats.load(SeqCst) as f32;
+                                                          ParamLabel::new(cx, Data::params, |params| &params.velocity_skew,
+                                                                          move |skew| {
+                                                                              ((skew * nr_beats).round() as usize).to_string()
+                                                                          })
+                                                              .alignment(Alignment::Center);
+                                    });
+                                });
+                            });
+                        }
+                    });
                 })
                     .padding_top(Pixels(20.0))
                     .alignment(Alignment::Center);
