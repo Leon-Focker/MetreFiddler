@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use nih_plug::prelude::{Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
@@ -9,7 +8,7 @@ use std::sync::atomic::Ordering::SeqCst;
 use atomic_float::AtomicF32;
 use nih_plug::{nih_dbg, nih_log};
 use crate::{MetreFiddlerParams};
-use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
+use crate::editor::MetreFiddlerEvent::*;
 use crate::gui::metre_input::{MetreAorB, MetreInput};
 use crate::gui::metre_input::MetreAorB::{MetreA, MetreB};
 use crate::gui::param_binding::ParamBinding;
@@ -81,7 +80,7 @@ impl vizia_plug::vizia::prelude::Data for Settings {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum MetreFiddlerScreen {
     Main,
     Settings,
@@ -97,8 +96,7 @@ impl vizia_plug::vizia::prelude::Data for MetreFiddlerScreen {
 #[derive(Debug, Clone)]
 pub(crate) enum MetreFiddlerEvent {
     UpdateString(String, MetreAorB),
-    ToggleMetreInfo,
-    ToggleSettings,
+    SetScreen(MetreFiddlerScreen),
     ToggleInterpolateDurs,
     ToggleManyVelocities,
     ToggleMidiOutput,
@@ -113,7 +111,7 @@ pub(crate) enum MetreFiddlerEvent {
 impl Model for Data {
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|my_event, _meta| match my_event {
-            MetreFiddlerEvent::UpdateString(new_text, which) => {
+            UpdateString(new_text, which) => {
                 match which {
                     MetreA => {
                         let mut metre_data =  self.params.metre_data_a.lock().unwrap();
@@ -165,34 +163,25 @@ impl Model for Data {
                     },
                 };
             }
-            MetreFiddlerEvent::ToggleMetreInfo => {
-                match self.screen {
-                    MetreFiddlerScreen::Info => self.screen = MetreFiddlerScreen::Main,
-                    _ =>  self.screen = MetreFiddlerScreen::Info,
-                }
+            SetScreen(screen) => {
+                self.screen = *screen;
             }
-            MetreFiddlerEvent::ToggleSettings => {
-                match self.screen {
-                    MetreFiddlerScreen::Settings => self.screen = MetreFiddlerScreen::Main,
-                    _ =>  self.screen = MetreFiddlerScreen::Settings,
-                }
-            }
-            MetreFiddlerEvent::ToggleInterpolateDurs => {
+            ToggleInterpolateDurs => {
                 self.params.interpolate_durations.store(!self.params.interpolate_durations.load(SeqCst), SeqCst);
                 self.settings.interpolate_durations = !self.settings.interpolate_durations;
             }
-            MetreFiddlerEvent::ToggleManyVelocities => {
+            ToggleManyVelocities => {
                 self.params.many_velocities.store(!self.params.many_velocities.load(SeqCst), SeqCst);
                 self.settings.many_velocities = !self.settings.many_velocities;
             }
-            MetreFiddlerEvent::ToggleMidiOutput => {
+            ToggleMidiOutput => {
                 self.params.midi_out_one_note.store(!self.params.midi_out_one_note.load(SeqCst), SeqCst);
                 self.settings.midi_out_one_note = !self.settings.midi_out_one_note;
             }
-            MetreFiddlerEvent::ToggleAB => {
+            ToggleAB => {
                 self.display_b = !self.display_b;
             }
-            MetreFiddlerEvent::TriggerPhaseReset => {
+            TriggerPhaseReset => {
                 self.params.reset_info.store(true, SeqCst);
                 self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle;
                 
@@ -202,24 +191,24 @@ impl Model for Data {
                 cx.emit(ParamEvent::SetParameter(param_ref, true).upcast());
                 cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
             }
-            MetreFiddlerEvent::RevertPhaseReset => {
+            RevertPhaseReset => {
                 let param_ref = &self.params.reset_phase;
 
                 cx.emit(ParamEvent::BeginSetParameter(param_ref).upcast());
                 cx.emit(ParamEvent::SetParameter(param_ref, false).upcast());
                 cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
             }
-            MetreFiddlerEvent::ToggleCheckForPhaseReset => {
+            ToggleCheckForPhaseReset => {
                 if !self.params.reset_info.load(SeqCst) {
                     cx.emit(RevertPhaseReset);
                 } else {
                     self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle; 
                 }
             }
-            MetreFiddlerEvent::ShowValidity(show) => {
+            ShowValidity(show) => {
                 self.display_metre_validity = *show;
             }
-            MetreFiddlerEvent::ExpandTextBox(expand) => {
+            ExpandTextBox(expand) => {
                 self.textbox_expanded = *expand;
             }
         });
@@ -267,7 +256,7 @@ pub(crate) fn create(
         // This is a kinda hacky way to get the button and BoolParm to reset itself, but keeping
         // DAW Automation possible...
         Binding::new(cx, Data::check_for_phase_reset_toggle, |cx, _was_reset| {
-            cx.emit(MetreFiddlerEvent::ToggleCheckForPhaseReset);
+            cx.emit(ToggleCheckForPhaseReset);
         });
 
         VStack::new(cx, |cx| {
@@ -466,7 +455,7 @@ fn duration_position(cx: &mut Context) {
                                 cx,
                                 |cx| Label::new(cx, "reset phase"))
                                 .on_press(|cx| {
-                                    cx.emit(MetreFiddlerEvent::TriggerPhaseReset);
+                                    cx.emit(TriggerPhaseReset);
                                 })
                                 .width(Pixels(100.0));
                         })
@@ -569,7 +558,10 @@ fn lower_part(cx: &mut Context) {
                 Button::new(cx,
                             |cx| Label::new(cx, "info"))
                     .on_press(|cx| {
-                        cx.emit(MetreFiddlerEvent::ToggleMetreInfo)
+                        match Data::screen.get(cx) {
+                            MetreFiddlerScreen::Info => cx.emit(SetScreen(MetreFiddlerScreen::Main)),
+                            _ => cx.emit(SetScreen(MetreFiddlerScreen::Info)),
+                        }
                     })
                     .position_type(PositionType::Absolute)
                     .right(Pixels(10.0));
@@ -647,7 +639,7 @@ fn lower_part(cx: &mut Context) {
                                         }
                         )
                             .on_press(|cx| {
-                                cx.emit(MetreFiddlerEvent::ToggleAB)
+                                cx.emit(ToggleAB)
                             })
                             .alignment(Alignment::Center);
                     });
@@ -680,7 +672,7 @@ fn lower_part(cx: &mut Context) {
                         Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0));
                     })
                         .hoverable(true)
-                        .on_press(|cx|cx.emit(MetreFiddlerEvent::ToggleSettings))
+                        .on_press(|cx|cx.emit(SetScreen(MetreFiddlerScreen::Settings)))
                         .width(Pixels(24.0))
                         .height(Pixels(24.0));
                     Element::new(cx)
@@ -706,21 +698,21 @@ fn settings_window(cx: &mut Context) {
                 } else {
                     Label::new(cx, "Don't Interpolate Durations")
                 })
-                .on_press(|cx| {cx.emit(MetreFiddlerEvent::ToggleInterpolateDurs)});
+                .on_press(|cx| {cx.emit(ToggleInterpolateDurs)});
             Button::new(cx, |cx|
                 if settings.get(cx).many_velocities {
                     Label::new(cx, "Many Velocities")
                 } else {
                     Label::new(cx, "Not Many Velocities")
                 })
-                .on_press(|cx| {cx.emit(MetreFiddlerEvent::ToggleManyVelocities)});
+                .on_press(|cx| {cx.emit(ToggleManyVelocities)});
             Button::new(cx, |cx|
                 if settings.get(cx).midi_out_one_note {
                     Label::new(cx, "Output just one Note")
                 } else {
                     Label::new(cx, "Output many notes")
                 })
-                .on_press(|cx| {cx.emit(MetreFiddlerEvent::ToggleMidiOutput)});
+                .on_press(|cx| {cx.emit(ToggleMidiOutput)});
         })
     })
         .width(Stretch(1.0))
@@ -731,7 +723,7 @@ fn settings_window(cx: &mut Context) {
             Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0)).cursor(CursorIcon::Hand);
         })
             .hoverable(true)
-            .on_press(|cx|cx.emit(MetreFiddlerEvent::ToggleSettings))
+            .on_press(|cx|cx.emit(SetScreen(MetreFiddlerScreen::Main)))
             .width(Pixels(24.0))
             .height(Pixels(24.0));
         Element::new(cx)
