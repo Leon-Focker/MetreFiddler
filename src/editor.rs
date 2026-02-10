@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use nih_plug::prelude::{Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
@@ -9,6 +10,8 @@ use atomic_float::AtomicF32;
 use nih_plug::{nih_dbg, nih_log};
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::RevertPhaseReset;
+use crate::gui::metre_input::{MetreAorB, MetreInput};
+use crate::gui::metre_input::MetreAorB::{MetreA, MetreB};
 use crate::gui::param_binding::ParamBinding;
 use crate::gui::param_display_knob::ParamDisplayKnob;
 use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
@@ -53,6 +56,7 @@ pub(crate) struct Data {
     pub(crate) params: Arc<MetreFiddlerParams>,
     pub(crate) screen: MetreFiddlerScreen,
     pub(crate) settings: Settings,
+    pub(crate) textbox_expanded: bool,
     pub(crate) interpolation_data_snapshot: InterpolationData,
     pub(crate) text_input_a: String,
     pub(crate) text_input_b: String,
@@ -92,7 +96,7 @@ impl vizia_plug::vizia::prelude::Data for MetreFiddlerScreen {
 
 #[derive(Debug, Clone)]
 pub(crate) enum MetreFiddlerEvent {
-    UpdateString(String, bool),
+    UpdateString(String, MetreAorB),
     ToggleMetreInfo,
     ToggleSettings,
     ToggleInterpolateDurs,
@@ -103,58 +107,62 @@ pub(crate) enum MetreFiddlerEvent {
     ToggleCheckForPhaseReset,
     ToggleAB,
     ShowValidity(bool),
+    ExpandTextBox(bool),
 }
 
 impl Model for Data {
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|my_event, _meta| match my_event {
-            MetreFiddlerEvent::UpdateString(new_text, update_b) => {
-                if *update_b {
-                    let mut metre_data = self.params.metre_data_b.lock().unwrap();
-                    if self.text_input_b != *new_text {
-                        // update Data
-                        self.text_input_b = new_text.clone();
-                        // parse String and send to Plugin
-                        match parse_input(new_text) {
-                            Ok(new_metre_data) => {
-                                let metre_data_a = self.params.metre_data_a.lock().unwrap();
-                                *metre_data = new_metre_data;
-                                self.max_threshold = metre_data.max.max(metre_data_a.max);
-                                self.last_input_is_valid = true;
-                                let new_interpolation_data =
-                                    generate_interpolation_data(&metre_data_a.durations, &metre_data.durations, &metre_data_a.gnsm, &metre_data.gnsm);
-                                self.interpolation_data_snapshot = new_interpolation_data.clone();
-                                *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
-                            },
-                            Err(err_string) => {
-                                nih_log!("Failed to parse string: '{}': {}", self.text_input_b, err_string);
-                                self.last_input_is_valid = false;
-                            },
+            MetreFiddlerEvent::UpdateString(new_text, which) => {
+                match which {
+                    MetreA => {
+                        let mut metre_data =  self.params.metre_data_a.lock().unwrap();
+                        if self.text_input_a != *new_text {
+                            // update Data
+                            self.text_input_a = new_text.clone();
+                            // parse String and send to Plugin
+                            match parse_input(new_text) {
+                                Ok(new_metre_data) => {
+                                    let metre_data_b = self.params.metre_data_b.lock().unwrap();
+                                    *metre_data = new_metre_data;
+                                    self.max_threshold = metre_data.max.max(metre_data_b.max);
+                                    self.last_input_is_valid = true;
+                                    let new_interpolation_data =
+                                        generate_interpolation_data(&metre_data.durations, &metre_data_b.durations, &metre_data.gnsm, &metre_data_b.gnsm);
+                                    self.interpolation_data_snapshot = new_interpolation_data.clone();
+                                    *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
+                                },
+                                Err(err_string) => {
+                                    nih_log!("Failed to parse string: '{}': {}", self.text_input_a, err_string);
+                                    self.last_input_is_valid = false;
+                                },
+                            }
                         }
-                    }
-                } else {
-                    let mut metre_data =  self.params.metre_data_a.lock().unwrap();
-                    if self.text_input_a != *new_text {
-                        // update Data
-                        self.text_input_a = new_text.clone();
-                        // parse String and send to Plugin
-                        match parse_input(new_text) {
-                            Ok(new_metre_data) => {
-                                let metre_data_b = self.params.metre_data_b.lock().unwrap();
-                                *metre_data = new_metre_data;
-                                self.max_threshold = metre_data.max.max(metre_data_b.max);
-                                self.last_input_is_valid = true;
-                                let new_interpolation_data =
-                                    generate_interpolation_data(&metre_data.durations, &metre_data_b.durations, &metre_data.gnsm, &metre_data_b.gnsm);
-                                self.interpolation_data_snapshot = new_interpolation_data.clone();
-                                *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
-                            },
-                            Err(err_string) => {
-                                nih_log!("Failed to parse string: '{}': {}", self.text_input_a, err_string);
-                                self.last_input_is_valid = false;
-                            },
+                    },
+                    MetreB => {
+                        let mut metre_data = self.params.metre_data_b.lock().unwrap();
+                        if self.text_input_b != *new_text {
+                            // update Data
+                            self.text_input_b = new_text.clone();
+                            // parse String and send to Plugin
+                            match parse_input(new_text) {
+                                Ok(new_metre_data) => {
+                                    let metre_data_a = self.params.metre_data_a.lock().unwrap();
+                                    *metre_data = new_metre_data;
+                                    self.max_threshold = metre_data.max.max(metre_data_a.max);
+                                    self.last_input_is_valid = true;
+                                    let new_interpolation_data =
+                                        generate_interpolation_data(&metre_data_a.durations, &metre_data.durations, &metre_data_a.gnsm, &metre_data.gnsm);
+                                    self.interpolation_data_snapshot = new_interpolation_data.clone();
+                                    *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
+                                },
+                                Err(err_string) => {
+                                    nih_log!("Failed to parse string: '{}': {}", self.text_input_b, err_string);
+                                    self.last_input_is_valid = false;
+                                },
+                            }
                         }
-                    }
+                    },
                 };
             }
             MetreFiddlerEvent::ToggleMetreInfo => {
@@ -211,6 +219,9 @@ impl Model for Data {
             MetreFiddlerEvent::ShowValidity(show) => {
                 self.display_metre_validity = *show;
             }
+            MetreFiddlerEvent::ExpandTextBox(expand) => {
+                self.textbox_expanded = *expand;
+            }
         });
     }
 }
@@ -249,6 +260,7 @@ pub(crate) fn create(
             displayed_position: params.displayed_position.clone(),
             check_for_phase_reset_toggle: false,
             interpolation_data_snapshot: params.interpolation_data.lock().unwrap().clone(),
+            textbox_expanded: false,
         }
             .build(cx);
 
@@ -564,26 +576,32 @@ fn lower_part(cx: &mut Context) {
             });
 
             // Metre Input for A or B
-            Binding::new(cx, Data::display_b, |cx, display| {
-                if display.get(cx) {
-                    Textbox::new(cx, Data::text_input_b).on_edit(|cx, _|
-                        cx.emit(MetreFiddlerEvent::ShowValidity(false)))
-                        .on_submit(|cx, text, _| {
-                            cx.emit(MetreFiddlerEvent::ShowValidity(true));
-                            cx.emit(MetreFiddlerEvent::UpdateString(text, true));
-                        })
-                        .width(Stretch(3.0));
-                } else {
-                    Textbox::new(cx, Data::text_input_a)
-                        .on_edit(|cx, _|
-                        cx.emit(MetreFiddlerEvent::ShowValidity(false)))
-                        .on_submit(|cx, text, _| {
-                            cx.emit(MetreFiddlerEvent::ShowValidity(true));
-                            cx.emit(MetreFiddlerEvent::UpdateString(text, false));
-                        })
-                        .width(Stretch(3.0));
-                }
-            });
+            VStack::new(cx, |cx| {
+                Binding::new(cx, Data::display_b, |cx, display| {
+                    Binding::new(cx, Data::textbox_expanded,  move |cx, expanded| {
+                        if expanded.get(cx) {
+                            Popup::new(cx, |cx| {
+                                if display.get(cx) {
+                                    MetreInput::new(cx, Data::text_input_b, MetreB);
+                                } else {
+                                    MetreInput::new(cx, Data::text_input_a, MetreA);
+                                }
+                            })
+                                .lock_focus_to_within() // automatically move into popup textbox
+                                .placement(Placement::Over)
+                                .background_color(Color::yellowgreen())
+                                .height(Pixels(75.0)); // TODO adjust size or add scrollable view in future?
+                        } else {
+                            if display.get(cx) {
+                                MetreInput::new(cx, Data::text_input_b, MetreB);
+                            } else {
+                                MetreInput::new(cx, Data::text_input_a, MetreA);
+                            }
+                        }
+                    });
+                });
+            })
+                .width(Stretch(3.0));
 
             // is valid
             VStack::new(cx, |cx| {
@@ -599,7 +617,8 @@ fn lower_part(cx: &mut Context) {
                     }
                 })
             });
-        });
+        })
+            .height(Pixels(32.0));
 
         // Second Row: Send Midi, Interpolation, Settings
         HStack::new(cx, |cx| {
