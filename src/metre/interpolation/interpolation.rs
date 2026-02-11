@@ -1,4 +1,3 @@
-use nih_plug::{nih_dbg, nih_log};
 use serde::{Deserialize, Serialize};
 use vizia_plug::vizia::prelude::Data;
 use crate::metre::interpolation::index_pairs::IndexPairs;
@@ -8,10 +7,9 @@ use crate::util::{approx_eq, dry_wet, get_start_times};
 
 /// Holds pairs of durations (one for each of two MetreDatas). If one metric structure has more
 /// beats than the other, some of its beats will be paired with 0.0.
-/// TODO .data field would be better, no?
 #[derive(Debug, Serialize, Deserialize, Clone, Data)]
 pub struct InterpolationData {
-    pub value: Vec<(f32, f32)>,
+    pub data: Vec<(f32, f32)>,
 }
 
 struct InterpolationDataHelper<'a> {
@@ -25,14 +23,14 @@ struct InterpolationDataHelper<'a> {
 impl Default for InterpolationData {
     fn default() -> Self {
         Self {
-            value: vec![(0.25, 0.25); 4],
+            data: vec![(0.25, 0.25); 4],
         }
     }
 }
 
 impl InterpolationData {
     pub fn get_durations(&self, interpolation: f32) -> impl Iterator<Item = f32> + use<'_> {
-        self.value
+        self.data
             .iter()
             .filter_map(move |&(a, b)| {
                 let x = dry_wet(a, b, interpolation);
@@ -60,7 +58,7 @@ pub fn generate_interpolation_data(durations_a: &[f32], durations_b: &[f32], gns
     };
     InterpolationData {
         // Get pairs of indices and map them to the actual durations from A and B.
-        value: generate_interpolation_data_aux(data_a, data_b)
+        data: generate_interpolation_data_aux(data_a, data_b)
             .iter().map(|&(idx_a, idx_b)|
             (
                 if let Some(idx) = idx_a {
