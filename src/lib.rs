@@ -113,8 +113,8 @@ impl MetreFiddler {
     fn is_accent(&self, indisp_value: usize) -> bool {
         let skew = self.vel_skew;
         let nr_beats = self.params.current_nr_of_beats.load(SeqCst) as f32;
-        let nr_of_accents = ((1.0 - skew) * nr_beats).round() as usize;
-        indisp_value < nr_of_accents
+        let nr_of_accents = (skew * nr_beats).round() as usize;
+        indisp_value >= nr_of_accents
     }
 
     fn calculate_current_velocity(&self, indisp_value: usize) -> f32 {
