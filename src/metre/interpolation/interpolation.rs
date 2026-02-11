@@ -1,5 +1,8 @@
+use std::cmp::Ordering;
+use nih_plug::nih_log;
 use serde::{Deserialize, Serialize};
 use vizia_plug::vizia::prelude::Data;
+use vizia_plug::vizia::vg::codec::result_to_string;
 use crate::metre::interpolation::index_pairs::IndexPairs;
 use crate::util::{approx_eq, dry_wet, get_start_times};
 
@@ -36,6 +39,38 @@ impl InterpolationData {
                 let x = dry_wet(a, b, interpolation);
                 (x > 0.0).then_some(x)
             })
+    }
+
+    // Return a Vector with tuples of (start_time, id), where id is -1.0 is the start_time is only found in MetreA,
+    // 0.0 when it is only found in MetreB and 1.0 when it is found in both.
+    pub fn get_unique_start_times(&self) -> Vec<(f32, f32)> {
+        let (durs_a, durs_b): (Vec<f32>, Vec<f32>) = self
+            .data
+            .iter()
+            .copied()
+            .unzip();
+        let mut starts_a = get_start_times(&durs_a);
+        let mut starts_b = get_start_times(&durs_b);
+        starts_a.push(1.0);
+        starts_b.push(1.0);
+        starts_a.dedup();
+        starts_b.dedup();
+        
+        let mut result: Vec<(f32, f32)> = starts_a.iter().map(|x| (*x, -1.0)).collect();
+
+        // get unique start times from starts_b and assign ids
+        for start in starts_b {
+            let similar_time = result.iter_mut().find(|(x, _)| approx_eq(*x, start,0.001));
+            if let Some((_, id)) = similar_time {
+                *id = 1.0
+            } else {
+                result.push((start, 0.0));
+            }
+        }
+
+        result.sort_by(|x, y| x.partial_cmp(y).unwrap_or(Ordering::Equal));
+
+        result
     }
 }
 

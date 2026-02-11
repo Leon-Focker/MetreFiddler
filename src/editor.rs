@@ -519,18 +519,21 @@ fn duration_position(cx: &mut Context) {
             ZStack::new(cx, |cx| {
                 // The ticks on the position bar
                 VStack::new(cx, |cx| {
-                    ParamBinding::new(
-                        cx,
-                        Data::params,
-                        |params| &params.interpolate_a_b,
-                        |cx, interpolate| {
-                            ParamTicks::new(
-                                cx,
-                                200.0,
-                                Data::interpolation_data_snapshot,
-                                interpolate)
-                                .height(Pixels(20.0));
-                        }).alignment(Alignment::Center);
+                    Binding::new(cx, Data::settings,|cx, settings| {
+                        ParamBinding::new(
+                            cx,
+                            Data::params,
+                            |params| &params.interpolate_a_b,
+                            move |cx, interpolate| {
+                                ParamTicks::new(
+                                    cx,
+                                    200.0,
+                                    Data::interpolation_data_snapshot,
+                                    interpolate,
+                                    settings.get(cx).interpolate_durations)
+                                    .height(Pixels(20.0));
+                            }).alignment(Alignment::Center);
+                    });
                 })
                     .alignment(Alignment::Center);
                 
