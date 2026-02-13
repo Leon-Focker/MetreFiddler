@@ -102,15 +102,15 @@ pub fn get_start_times<T: Num + Copy>(durations: &[T]) -> Vec<T> {
     result
 }
 
-pub fn get_durations<T: Num + Copy>(start_times: &[T]) -> Vec<T> {
+pub fn get_durations<T: Num + Copy>(start_times: &[T]) -> impl Iterator<Item = T> + use<'_, T> {
     let mut last = start_times[0];
     start_times[1..]
         .iter()
-        .map(|&start| {
+        .map(move |&start| {
             let dur = start - last;
             last = start;
             dur
-        }).collect()
+        })
 }
 
 pub fn approx_eq<T: Float>(a: T, b: T, epsilon: T) -> bool {

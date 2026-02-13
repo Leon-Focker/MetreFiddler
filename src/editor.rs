@@ -128,7 +128,7 @@ impl Model for Data {
                                     let new_interpolation_data =
                                         generate_interpolation_data(&metre_data.durations, &metre_data_b.durations, &metre_data.gnsm, &metre_data_b.gnsm);
                                     self.interpolation_data_snapshot = new_interpolation_data.clone();
-                                    self.params.current_nr_of_beats.store(new_interpolation_data.clone().get_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
+                                    self.params.current_nr_of_beats.store(new_interpolation_data.clone().get_interpolated_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
                                     *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
                                 },
                                 Err(err_string) => {
@@ -153,7 +153,7 @@ impl Model for Data {
                                     let new_interpolation_data =
                                         generate_interpolation_data(&metre_data_a.durations, &metre_data.durations, &metre_data_a.gnsm, &metre_data.gnsm);
                                     self.interpolation_data_snapshot = new_interpolation_data.clone();
-                                    self.params.current_nr_of_beats.store(new_interpolation_data.clone().get_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
+                                    self.params.current_nr_of_beats.store(new_interpolation_data.clone().get_interpolated_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
                                     *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
                                 },
                                 Err(err_string) => {

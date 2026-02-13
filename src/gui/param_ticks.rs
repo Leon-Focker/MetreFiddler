@@ -44,19 +44,20 @@ impl ParamTicks {
                 .width(Pixels(1.0))
                 .height(Pixels(10.0));
 
-            // TODO clean this up a bit
+            // TODO clean this up a bit. Actually we could just draw one tick gui for two metres
+            // on top of each other...?
 
             let durations: Vec<f32>;
             let initial_opacity_values: Vec<f32>;
 
             if interpolate_durs {
-                durations = interpolation_data.get(cx).get_durations(interpolate).collect();
+                durations = interpolation_data.get(cx).get_interpolated_durations(interpolate).collect();
                 initial_opacity_values = vec![2.0; durations.len()];
             } else {
-                let starts_and_ids = interpolation_data.get(cx).get_unique_start_times();
-
-                let (starts, inits): (Vec<f32>, Vec<f32>) = starts_and_ids.iter().copied().unzip();
-                durations = get_durations(&starts);
+                let starts = interpolation_data.get(cx).unique_start_times;
+                let inits = interpolation_data.get(cx).unique_start_time_ids;
+                
+                durations = get_durations(&starts).collect();
                 initial_opacity_values = inits[1..].to_vec();
             };
 
