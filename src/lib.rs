@@ -2,7 +2,7 @@ use nih_plug::prelude::*;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
 use crate::params::MetreFiddlerParams;
-use crate::util::{dry_wet, rescale};
+use crate::util::{dry_wet, get_durations, rescale};
 
 mod editor;
 mod metre_data;
@@ -29,6 +29,7 @@ struct MetreFiddler {
     metric_duration: f32,
     bar_pos: f32,
     interpolate: f32,
+    interpolate_durs: bool,
 }
 
 impl Default for MetreFiddler {
@@ -50,6 +51,7 @@ impl Default for MetreFiddler {
             upper_threshold: 1.0,
             bar_pos: 0.0,
             interpolate: 0.0,
+            interpolate_durs: true,
         }
     }
 }
@@ -143,21 +145,11 @@ impl MetreFiddler {
         }
     }
 
-    /// return a tuple with the index of the current beat, the normalized duration up until that beat,
-    /// the indispensability value for that beat and whether the thresholds would currently let
-    /// a note through.
-    fn get_current_indisp_data(&self) -> (usize, f32, usize, bool) {
-        let metric_data_a = &self.params.metre_data_a.lock().unwrap();
-        let metric_data_b = &self.params.metre_data_b.lock().unwrap();
-        let interpolation_data = &self.params.interpolation_data.lock().unwrap();
-        let max_len = metric_data_a.durations.len().max(metric_data_b.durations.len());
-        let same_length: bool = metric_data_a.durations.len() == metric_data_b.durations.len();
-        let mut durations = interpolation_data.get_durations(self.interpolate);
+    fn get_beat_idx_from_durations(&self, mut durations: impl Iterator<Item=f32>) -> (usize, f32, usize) {
         let position = self.get_normalized_position_in_bar();
-
-        let mut current_beat_duration_sum: f32 = 0.0;
         let mut current_beat_idx: usize = 0;
-        let mut nr_beats: usize = 0;
+        let mut current_beat_duration_sum: f32 = 0.0;
+        let mut nr_beats = 0;
 
         loop {
             if let Some(dur) = durations.next() {
@@ -175,12 +167,53 @@ impl MetreFiddler {
             }
         }
 
-        self.params.current_nr_of_beats.store(nr_beats, SeqCst);
+        (current_beat_idx, current_beat_duration_sum, nr_beats)
+    }
+
+    /// return a tuple with the index of the current beat, the normalized duration up until that beat,
+    /// the indispensability value for that beat and whether the thresholds would currently let
+    /// a note through.
+    fn get_current_indisp_data(&self) -> (usize, f32, usize, bool) {
+        let metric_data_a = &self.params.metre_data_a.lock().unwrap();
+        let metric_data_b = &self.params.metre_data_b.lock().unwrap();
+        let interpolation_data = &self.params.interpolation_data.lock().unwrap();
+        let max_len = metric_data_a.durations.len().max(metric_data_b.durations.len());
+        let same_length: bool = metric_data_a.durations.len() == metric_data_b.durations.len();
+
+        let current_beat_idx_a;
+        let current_beat_idx_b;
+        let current_beat_idx;
+        let current_beat_duration_sum;
+
+        // TODO lots still going wrong here, for example no_many_velocities + don't_interpolate
+        // TODO Sending Midi for dont_interpolate needs debugging
+        // TODO how should the interpolation of metres actually sound?
+
+        if self.interpolate_durs {
+            let durations = interpolation_data.get_interpolated_durations(self.interpolate);
+            let (idx, sum, nr_beats) = self.get_beat_idx_from_durations(durations);
+            current_beat_idx_a = idx;
+            current_beat_idx_b = idx;
+
+            current_beat_idx = idx;
+            current_beat_duration_sum = sum;
+            self.params.current_nr_of_beats.store(nr_beats, SeqCst);
+        } else {
+            let (idx, sum, nr_beats) =
+                self.get_beat_idx_from_durations(interpolation_data.get_interleaved_durations(self.interpolate));
+            (current_beat_idx_a, _, _) = self.get_beat_idx_from_durations(metric_data_a.durations.iter().copied());
+            (current_beat_idx_b, _, _) = self.get_beat_idx_from_durations(metric_data_b.durations.iter().copied());
+
+            current_beat_idx = idx;
+            current_beat_duration_sum = sum;
+            self.params.current_nr_of_beats.store(nr_beats, SeqCst);
+        }
 
         let indisp_val_temp = dry_wet(
-            *metric_data_a.value.get(current_beat_idx).unwrap_or(&0),
-            *metric_data_b.value.get(current_beat_idx).unwrap_or(&0),
+            *metric_data_a.value.get(current_beat_idx_a).unwrap_or(&0),
+            *metric_data_b.value.get(current_beat_idx_b).unwrap_or(&0),
             self.interpolate);
+
         // TODO is this a good method for round/ceil? needs more testing!
         let indisp_val: usize = if same_length {
             indisp_val_temp.round() as usize
@@ -350,6 +383,7 @@ impl Plugin for MetreFiddler {
         } else {
             let output_one_pitch = self.params.midi_out_one_note.load(SeqCst);
             let many_velocities = self.params.many_velocities.load(SeqCst);
+            self.interpolate_durs = self.params.interpolate_durations.load(SeqCst);
             // Since the metric duration might change while doing this, maybe it's easiest to just
             // loop through all samples and individually check, whether we want to send a note.
             for sample in 0..buffer_len {

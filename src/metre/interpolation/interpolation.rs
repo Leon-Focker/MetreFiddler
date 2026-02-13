@@ -15,10 +15,14 @@ use crate::util::{approx_eq, dry_wet, get_durations, get_start_times};
 /// whether that start time appears in both metres or just A or B.
 #[derive(Debug, Serialize, Deserialize, Clone, Data)]
 pub struct InterpolationData {
+    durations_a: Vec<f32>,
+    durations_b: Vec<f32>,
+    gnsm_a: Vec<usize>,
+    gnsm_b: Vec<usize>,
     duration_pairs: Vec<(f32, f32)>,
+    interleaved_durations: Vec<f32>,
+    interleaved_gnsm: Vec<usize>,
 
-    pub interleaved_durations: Vec<f32>,
-    pub interleaved_gnsm: Vec<usize>,
     pub unique_start_times: Vec<f32>,
     pub unique_start_time_ids: Vec<f32>,
 }
@@ -34,6 +38,10 @@ struct InterpolationDataHelper<'a> {
 impl Default for InterpolationData {
     fn default() -> Self {
         Self {
+            durations_a: vec![0.25; 4],
+            durations_b: vec![0.25; 4],
+            gnsm_a: vec![1, 0, 0, 0],
+            gnsm_b: vec![1, 0, 0, 0],
             duration_pairs: vec![(0.25, 0.25); 4],
 
             interleaved_durations: vec![0.25; 4],
@@ -45,13 +53,23 @@ impl Default for InterpolationData {
 }
 
 impl InterpolationData {
-    pub fn get_interpolated_durations(&self, interpolation: f32) -> impl Iterator<Item = f32> + use<'_> {
+    pub fn get_interpolated_durations(&self, interpolation: f32) -> impl Iterator<Item = f32> + '_ {
         self.duration_pairs
             .iter()
             .filter_map(move |&(a, b)| {
                 let x = dry_wet(a, b, interpolation);
                 (x > 0.0).then_some(x)
             })
+    }
+
+    pub fn get_interleaved_durations(&self, interpolation: f32) -> impl Iterator<Item = f32> + '_ {
+        if interpolation <= 0.0 {
+            self.durations_a.iter().copied()
+        } else if interpolation >= 1.0 {
+            self.durations_b.iter().copied()
+        } else {
+            self.interleaved_durations.iter().copied()
+        }
     }
 
     /// TODO Doc
