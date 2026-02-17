@@ -70,6 +70,7 @@ pub(crate) struct Data {
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Settings {
     pub(crate) interpolate_durations: bool,
+    pub(crate) interpolate_indisp: bool,
     pub(crate) many_velocities: bool,
     pub(crate) midi_out_one_note: bool,
 }
@@ -98,6 +99,7 @@ pub(crate) enum MetreFiddlerEvent {
     UpdateString(String, MetreAorB),
     SetScreen(MetreFiddlerScreen),
     ToggleInterpolateDurs,
+    ToggleInterpolateIndisp,
     ToggleManyVelocities,
     ToggleMidiOutput,
     TriggerPhaseReset,
@@ -126,7 +128,7 @@ impl Model for Data {
                                     self.max_threshold = metre_data.max.max(metre_data_b.max);
                                     self.last_input_is_valid = true;
                                     let new_interpolation_data =
-                                        generate_interpolation_data(&metre_data.durations, &metre_data_b.durations, &metre_data.gnsm, &metre_data_b.gnsm);
+                                        InterpolationData::generate_interpolation_data(&metre_data.durations, &metre_data_b.durations, &metre_data.gnsm, &metre_data_b.gnsm);
                                     self.interpolation_data_snapshot = new_interpolation_data.clone();
                                     self.params.current_nr_of_beats.store(new_interpolation_data.clone().get_interpolated_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
                                     *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
@@ -151,7 +153,7 @@ impl Model for Data {
                                     self.max_threshold = metre_data.max.max(metre_data_a.max);
                                     self.last_input_is_valid = true;
                                     let new_interpolation_data =
-                                        generate_interpolation_data(&metre_data_a.durations, &metre_data.durations, &metre_data_a.gnsm, &metre_data.gnsm);
+                                        InterpolationData::generate_interpolation_data(&metre_data_a.durations, &metre_data.durations, &metre_data_a.gnsm, &metre_data.gnsm);
                                     self.interpolation_data_snapshot = new_interpolation_data.clone();
                                     self.params.current_nr_of_beats.store(new_interpolation_data.clone().get_interpolated_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
                                     *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
@@ -171,6 +173,10 @@ impl Model for Data {
             ToggleInterpolateDurs => {
                 self.params.interpolate_durations.store(!self.params.interpolate_durations.load(SeqCst), SeqCst);
                 self.settings.interpolate_durations = !self.settings.interpolate_durations;
+            }
+            ToggleInterpolateIndisp => {
+                self.params.interpolate_indisp.store(!self.params.interpolate_indisp.load(SeqCst), SeqCst);
+                self.settings.interpolate_indisp = !self.settings.interpolate_indisp;
             }
             ToggleManyVelocities => {
                 self.params.many_velocities.store(!self.params.many_velocities.load(SeqCst), SeqCst);
@@ -234,6 +240,7 @@ pub(crate) fn create(
         let metre_data_b = params.metre_data_b.lock().unwrap();
         let settings = Settings {
             interpolate_durations: params.interpolate_durations.load(SeqCst),
+            interpolate_indisp: params.interpolate_indisp.load(SeqCst),
             many_velocities: params.many_velocities.load(SeqCst),
             midi_out_one_note: params.midi_out_one_note.load(SeqCst),
         };
@@ -723,6 +730,13 @@ fn settings_window(cx: &mut Context) {
                     Label::new(cx, "Don't Interpolate Durations")
                 })
                 .on_press(|cx| {cx.emit(ToggleInterpolateDurs)});
+            Button::new(cx, |cx|
+                if settings.get(cx).interpolate_indisp {
+                    Label::new(cx, "Interpolate Indispensability Values")
+                } else {
+                    Label::new(cx, "Don't Interpolate Indispensability Values")
+                })
+                .on_press(|cx| {cx.emit(ToggleInterpolateIndisp)});
             Button::new(cx, |cx|
                 if settings.get(cx).many_velocities {
                     Label::new(cx, "Many Velocities")

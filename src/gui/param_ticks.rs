@@ -1,7 +1,8 @@
 use nih_plug::{nih_dbg, nih_log};
 use num_traits::real::Real;
 use vizia_plug::vizia::prelude::*;
-use crate::metre::interpolation::interpolation::InterpolationData;
+use crate::metre::interpolation::interpolation::{BeatOrigin, InterpolationData};
+use crate::metre::interpolation::interpolation::BeatOrigin::Both;
 use crate::util::{get_durations, get_start_times};
 
 #[derive(Lens)]
@@ -48,17 +49,17 @@ impl ParamTicks {
             // on top of each other...?
 
             let durations: Vec<f32>;
-            let initial_opacity_values: Vec<f32>;
+            let opacity_ids: Vec<BeatOrigin>;
 
             if interpolate_durs {
                 durations = interpolation_data.get(cx).get_interpolated_durations(interpolate).collect();
-                initial_opacity_values = vec![2.0; durations.len()];
+                opacity_ids = vec![Both; durations.len()];
             } else {
                 let starts = interpolation_data.get(cx).unique_start_times;
-                let inits = interpolation_data.get(cx).unique_start_time_ids;
+                let inits = interpolation_data.get(cx).unique_start_time_origins;
                 
                 durations = get_durations(&starts).collect();
-                initial_opacity_values = inits[1..].to_vec();
+                opacity_ids = inits[1..].to_vec();
             };
 
             let sum: f32 = durations.iter().sum();
@@ -67,7 +68,7 @@ impl ParamTicks {
             let mut last_sum: f32 = 0.0;
             let nr_of_pixels = (width_px.round() as usize).saturating_sub(2).saturating_sub(nr_of_ticks);
 
-            for (dur, init_opacity) in durations.iter().zip(initial_opacity_values) {
+            for (dur, origin) in durations.iter().zip(opacity_ids) {
                 let float_pixels: f32 = dur / sum * nr_of_pixels as f32;
                 current_sum += float_pixels;
                 let width_in_pixels: f32 = current_sum.round() - last_sum.round();
@@ -77,7 +78,7 @@ impl ParamTicks {
                     255
                 } else {
                     // calculate opacity (init_opacity -1.0 -> MetreA, 0.0 -> MetreB, 1.0 -> both)
-                    ((init_opacity + interpolate).abs().min(1.0) * 255.0).round() as u8
+                    origin.to_opacity(interpolate)
                 };
                 let color: Color = Color::rgba(0,0,0, opacity);
 

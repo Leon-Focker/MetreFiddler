@@ -1,9 +1,26 @@
-use std::cmp::Ordering;
-use nih_plug::nih_dbg;
 use serde::{Deserialize, Serialize};
 use vizia_plug::vizia::prelude::Data;
 use crate::metre::interpolation::index_pairs::IndexPairs;
+use crate::metre::interpolation::interpolation::BeatOrigin::{Both, MetreA, MetreB};
 use crate::util::{approx_eq, dry_wet, get_durations, get_start_times};
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, Data, PartialEq)]
+pub enum BeatOrigin {
+    MetreA,
+    MetreB,
+    Both,
+}
+
+impl BeatOrigin {
+    pub fn to_opacity(&self, interpolate: f32) -> u8 {
+        let id = match self {
+            MetreA => -1.0,
+            MetreB => 0.0,
+            Both => 1.0,
+        };
+        ((id + interpolate).abs().min(1.0) * 255.0).round() as u8
+    }
+}
 
 /// TODO update Doc
 /// Holds pairs of durations (one for each of two MetreDatas). If one metric structure has more
@@ -24,7 +41,7 @@ pub struct InterpolationData {
     interleaved_gnsm: Vec<usize>,
 
     pub unique_start_times: Vec<f32>,
-    pub unique_start_time_ids: Vec<f32>,
+    pub unique_start_time_origins: Vec<BeatOrigin>,
 }
 
 struct InterpolationDataHelper<'a> {
@@ -47,7 +64,7 @@ impl Default for InterpolationData {
             interleaved_durations: vec![0.25; 4],
             interleaved_gnsm: vec![1, 0, 0, 0],
             unique_start_times: vec![0.0, 0.25, 0.5, 0.75],
-            unique_start_time_ids: vec![1.0; 4],
+            unique_start_time_origins: vec![Both; 4],
         }
     }
 }
@@ -90,7 +107,7 @@ impl InterpolationData {
         starts_b.dedup_by(|a, b| approx_eq(*a, *b, 0.001));
 
         let mut unique_start_times = Vec::with_capacity(max_len);
-        let mut unique_start_time_ids = Vec::with_capacity(max_len);
+        let mut unique_start_time_origins = Vec::with_capacity(max_len);
         let mut interleaved_gnsm = Vec::with_capacity(max_len);
 
         let mut i = 0;
@@ -101,31 +118,31 @@ impl InterpolationData {
                 (Some(&a), Some(&b)) => {
                     if approx_eq(a, b, 0.001) {
                         unique_start_times.push(a);
-                        unique_start_time_ids.push(1.0);
+                        unique_start_time_origins.push(Both);
                         interleaved_gnsm.push(gnsm_a[i % gnsm_a.len()].max(gnsm_b[k % gnsm_b.len()]));
                         i += 1;
                         k += 1;
                     } else if a < b {
                         unique_start_times.push(a);
-                        unique_start_time_ids.push(-1.0);
+                        unique_start_time_origins.push(MetreA);
                         interleaved_gnsm.push(gnsm_a[i % gnsm_a.len()]);
                         i += 1;
                     } else {
                         unique_start_times.push(b);
-                        unique_start_time_ids.push(0.0);
+                        unique_start_time_origins.push(MetreB);
                         interleaved_gnsm.push(gnsm_b[k % gnsm_b.len()]);
                         k += 1;
                     }
                 }
                 (Some(&a), None) => {
                     unique_start_times.push(a);
-                    unique_start_time_ids.push(-1.0);
+                    unique_start_time_origins.push(MetreA);
                     interleaved_gnsm.push(gnsm_a[i % gnsm_a.len()]);
                     i += 1;
                 }
                 (None, Some(&b)) => {
                     unique_start_times.push(b);
-                    unique_start_time_ids.push(0.0);
+                    unique_start_time_origins.push(MetreB);
                     interleaved_gnsm.push(gnsm_b[k % gnsm_b.len()]);
                     k += 1;
                 }
@@ -136,45 +153,49 @@ impl InterpolationData {
         let interleaved_durations = get_durations(&unique_start_times).collect::<Vec<_>>();
 
         self.unique_start_times = unique_start_times;
-        self.unique_start_time_ids = unique_start_time_ids;
+        self.unique_start_time_origins = unique_start_time_origins;
         self.interleaved_durations = interleaved_durations;
         self.interleaved_gnsm = interleaved_gnsm;
     }
-}
 
-pub fn generate_interpolation_data(durations_a: &[f32], durations_b: &[f32], gnsm_a: &[usize], gnsm_b: &[usize]) -> InterpolationData {
-    assert_eq!(durations_a.len(), gnsm_a.len());
-    assert_eq!(durations_b.len(), gnsm_b.len());
-    let mut result = InterpolationData::default();
-    let data_a = InterpolationDataHelper {
-        durations: durations_a,
-        starts: &get_start_times(durations_a),
-        gnsm: gnsm_a,
-        len: durations_a.len(),
-        offset: 0
-    };
-    let data_b = InterpolationDataHelper {
-        durations: durations_b,
-        starts: &get_start_times(durations_b),
-        gnsm: gnsm_b,
-        len: durations_b.len(),
-        offset: 0
-    };
-    let duration_pairs = generate_interpolation_data_aux(data_a, data_b)
-        .iter()
-        .map(|&(idx_a, idx_b)| {
-            (if let Some(idx) = idx_a {
-                *durations_a.get(idx).unwrap_or(&0.0)
-            } else { 0.0 },
-             if let Some(idx) = idx_b {
-                 *durations_b.get(idx).unwrap_or(&0.0)
-             } else { 0.0 })
-        })
-        .collect();
+    pub fn generate_interpolation_data(durations_a: &[f32], durations_b: &[f32], gnsm_a: &[usize], gnsm_b: &[usize]) -> InterpolationData {
+        assert_eq!(durations_a.len(), gnsm_a.len());
+        assert_eq!(durations_b.len(), gnsm_b.len());
+        let mut result = InterpolationData::default();
+        let data_a = InterpolationDataHelper {
+            durations: durations_a,
+            starts: &get_start_times(durations_a),
+            gnsm: gnsm_a,
+            len: durations_a.len(),
+            offset: 0
+        };
+        let data_b = InterpolationDataHelper {
+            durations: durations_b,
+            starts: &get_start_times(durations_b),
+            gnsm: gnsm_b,
+            len: durations_b.len(),
+            offset: 0
+        };
+        let duration_pairs = generate_interpolation_data_aux(data_a, data_b)
+            .iter()
+            .map(|&(idx_a, idx_b)| {
+                (if let Some(idx) = idx_a {
+                    *durations_a.get(idx).unwrap_or(&0.0)
+                } else { 0.0 },
+                 if let Some(idx) = idx_b {
+                     *durations_b.get(idx).unwrap_or(&0.0)
+                 } else { 0.0 })
+            })
+            .collect();
 
-    result.duration_pairs = duration_pairs;
-    result.gen_unique_start_times(durations_a, durations_b, gnsm_a, gnsm_b);
-    result
+        result.duration_pairs = duration_pairs;
+        result.durations_a = durations_a.to_vec();
+        result.durations_b = durations_b.to_vec();
+        result.gnsm_a = gnsm_a.to_vec();
+        result.gnsm_b = gnsm_b.to_vec();
+        result.gen_unique_start_times(durations_a, durations_b, gnsm_a, gnsm_b);
+        result
+    }
 }
 
 /// Given durations A and B, look for identical start times. For each identical start time in both

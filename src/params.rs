@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize};
 use nih_plug::prelude::SmoothingStyle::Linear;
 use crate::editor;
 use crate::metre_data::{MetreData};
-use crate::metre::interpolation::interpolation::{generate_interpolation_data, InterpolationData};
+use crate::metre::interpolation::interpolation::{InterpolationData};
 
 #[derive(Params)]
 pub struct MetreFiddlerParams {
@@ -74,6 +74,9 @@ pub struct MetreFiddlerParams {
 
     #[persist = "midi_out_one_note"]
     pub midi_out_one_note: AtomicBool,
+    
+    #[persist = "interpolate_indisp"]
+    pub interpolate_indisp: AtomicBool,
 }
 
 impl Default for MetreFiddlerParams {
@@ -176,6 +179,8 @@ impl Default for MetreFiddlerParams {
             many_velocities: AtomicBool::from(true),
 
             midi_out_one_note: AtomicBool::from(false),
+            
+            interpolate_indisp: AtomicBool::from(true),
         }
     }
 }

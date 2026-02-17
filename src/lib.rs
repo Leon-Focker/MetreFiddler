@@ -1,8 +1,10 @@
 use nih_plug::prelude::*;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
+use crate::metre::interpolation::interpolation::{BeatOrigin};
+use crate::metre::interpolation::interpolation::BeatOrigin::*;
 use crate::params::MetreFiddlerParams;
-use crate::util::{dry_wet, get_durations, rescale};
+use crate::util::{dry_wet, rescale};
 
 mod editor;
 mod metre_data;
@@ -14,7 +16,7 @@ mod params;
 struct MetreFiddler {
     params: Arc<MetreFiddlerParams>,
     sample_rate: f32,
-    progress_in_samples: u64,
+    progress_in_samples: u64, // TODO maybe this should be reset after each full measure??
     last_reset_phase_value: bool,
     last_sent_beat_idx: i32,
     note_off_buffer: Vec<(u8, i64)>,
@@ -30,6 +32,7 @@ struct MetreFiddler {
     bar_pos: f32,
     interpolate: f32,
     interpolate_durs: bool,
+    interpolate_indisp: bool,
 }
 
 impl Default for MetreFiddler {
@@ -52,6 +55,7 @@ impl Default for MetreFiddler {
             bar_pos: 0.0,
             interpolate: 0.0,
             interpolate_durs: true,
+            interpolate_indisp: true,
         }
     }
 }
@@ -173,10 +177,11 @@ impl MetreFiddler {
     /// return a tuple with the index of the current beat, the normalized duration up until that beat,
     /// the indispensability value for that beat and whether the thresholds would currently let
     /// a note through.
-    fn get_current_indisp_data(&self) -> (usize, f32, usize, bool) {
+    fn get_current_indisp_data(&self) -> (usize, f32, usize, bool, BeatOrigin) {
         let metric_data_a = &self.params.metre_data_a.lock().unwrap();
         let metric_data_b = &self.params.metre_data_b.lock().unwrap();
         let interpolation_data = &self.params.interpolation_data.lock().unwrap();
+        let interpolate_indisp = &self.params.interpolate_indisp.load(SeqCst);
         let max_len = metric_data_a.durations.len().max(metric_data_b.durations.len());
         let same_length: bool = metric_data_a.durations.len() == metric_data_b.durations.len();
 
@@ -184,6 +189,7 @@ impl MetreFiddler {
         let current_beat_idx_b;
         let current_beat_idx;
         let current_beat_duration_sum;
+        let current_beat_origin: BeatOrigin;
 
         // TODO lots still going wrong here, for example no_many_velocities + don't_interpolate
         // TODO Sending Midi for dont_interpolate needs debugging
@@ -191,28 +197,44 @@ impl MetreFiddler {
 
         if self.interpolate_durs {
             let durations = interpolation_data.get_interpolated_durations(self.interpolate);
-            let (idx, sum, nr_beats) = self.get_beat_idx_from_durations(durations);
+            let (idx, sum, total_nr_beats) = self.get_beat_idx_from_durations(durations);
+
             current_beat_idx_a = idx;
             current_beat_idx_b = idx;
-
             current_beat_idx = idx;
             current_beat_duration_sum = sum;
-            self.params.current_nr_of_beats.store(nr_beats, SeqCst);
+            current_beat_origin = Both;
+            self.params.current_nr_of_beats.store(total_nr_beats, SeqCst);
         } else {
-            let (idx, sum, nr_beats) =
-                self.get_beat_idx_from_durations(interpolation_data.get_interleaved_durations(self.interpolate));
+            let durations = interpolation_data.get_interleaved_durations(self.interpolate);
+            let (idx, sum, total_nr_beats) = self.get_beat_idx_from_durations(durations);
             (current_beat_idx_a, _, _) = self.get_beat_idx_from_durations(metric_data_a.durations.iter().copied());
             (current_beat_idx_b, _, _) = self.get_beat_idx_from_durations(metric_data_b.durations.iter().copied());
 
             current_beat_idx = idx;
             current_beat_duration_sum = sum;
-            self.params.current_nr_of_beats.store(nr_beats, SeqCst);
+            current_beat_origin = match self.interpolate {
+                x if x <= 0.0 => MetreA,
+                x if x >= 1.0 => MetreB,
+                _ => interpolation_data.unique_start_time_origins[idx],
+            };
+            self.params.current_nr_of_beats.store(total_nr_beats, SeqCst);
         }
 
-        let indisp_val_temp = dry_wet(
-            *metric_data_a.value.get(current_beat_idx_a).unwrap_or(&0),
-            *metric_data_b.value.get(current_beat_idx_b).unwrap_or(&0),
-            self.interpolate);
+        let indisp_val_temp: f32 =
+            if *interpolate_indisp || current_beat_origin == Both {
+                dry_wet(
+                    *metric_data_a.value.get(current_beat_idx_a).unwrap_or(&0),
+                    *metric_data_b.value.get(current_beat_idx_b).unwrap_or(&0),
+                    self.interpolate)
+            } else {
+                match current_beat_origin {
+                    MetreA => *metric_data_a.value.get(current_beat_idx_a).unwrap_or(&0) as f32,
+                    MetreB => *metric_data_b.value.get(current_beat_idx_b).unwrap_or(&0) as f32,
+                    // this should never occur:
+                    _ => 0.0,
+                }
+            };
 
         // TODO is this a good method for round/ceil? needs more testing!
         let indisp_val: usize = if same_length {
@@ -224,13 +246,14 @@ impl MetreFiddler {
         (current_beat_idx,
          current_beat_duration_sum,
          indisp_val,
-         self.is_indisp_val_within_thresholds(indisp_val, max_len - 1))
+         self.is_indisp_val_within_thresholds(indisp_val, max_len - 1),
+         current_beat_origin)
     }
 
     /// Get a MIDI event and either return none (filter it) or return it with a new velocity
     /// value (according to the current metric position).
     fn process_event<S: SysExMessage>(&mut self, event: NoteEvent<S>) -> Option<NoteEvent<S>> {
-        let (_,_, indisp_val, let_through) = self.get_current_indisp_data();
+        let (_,_, indisp_val, let_through, _) = self.get_current_indisp_data();
         let vel: f32 = self.calculate_current_velocity(indisp_val);
 
         // Return new MIDI event (or None)
@@ -384,6 +407,7 @@ impl Plugin for MetreFiddler {
             let output_one_pitch = self.params.midi_out_one_note.load(SeqCst);
             let many_velocities = self.params.many_velocities.load(SeqCst);
             self.interpolate_durs = self.params.interpolate_durations.load(SeqCst);
+            self.interpolate_indisp = self.params.interpolate_indisp.load(SeqCst);
             // Since the metric duration might change while doing this, maybe it's easiest to just
             // loop through all samples and individually check, whether we want to send a note.
             for sample in 0..buffer_len {
@@ -400,7 +424,8 @@ impl Plugin for MetreFiddler {
                     self.set_metric_duration_for_bpm(context.transport().tempo);
                 }
 
-                let (current_beat_idx, current_beat_duration_sum, indisp_val, let_through) = self.get_current_indisp_data();
+                let (current_beat_idx, current_beat_duration_sum, indisp_val, let_through, origin) =
+                    self.get_current_indisp_data();
 
                 let beat_first_sample: u64 =
                     (current_beat_duration_sum
@@ -419,7 +444,19 @@ impl Plugin for MetreFiddler {
                 if nth_sample_of_beat < NR_SAMPLES_FOR_START_OF_BEAT {
                     // Send midi when we haven't already sent a note for this idx
                     if self.last_sent_beat_idx != current_beat_idx as i32 && let_through {
-                        let vel =  self.calculate_current_velocity(indisp_val);
+                        let vel = {
+                            let tmp_vel = self.calculate_current_velocity(indisp_val);
+
+                            if self.interpolate_indisp {
+                                tmp_vel
+                            } else {
+                                match origin {
+                                    Both => tmp_vel,
+                                    MetreA => dry_wet(tmp_vel, 0.0, self.interpolate),
+                                    MetreB => dry_wet(0.0, tmp_vel, self.interpolate),
+                                }
+                            }
+                        };
                         let note = 60
                             + if output_one_pitch {
                             0
