@@ -57,6 +57,7 @@ pub fn rescale<T: Num + PartialOrd + Copy + Debug>(
 ///
 /// assert_eq!(element, 'b');
 /// ```
+#[allow(dead_code)]
 pub fn decider<T: Num + PartialOrd + Copy + Debug + Sum<T>>(selector: T, weights: &[T]) -> Result<T, &'static str> {
     let selector: T = rescale(selector, T::zero(), T::one(), T::zero(), weights.iter().copied().sum(), true)?;
     decider_aux(selector, &weights[1..], T::zero(), weights[0])

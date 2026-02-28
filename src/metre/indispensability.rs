@@ -4,6 +4,7 @@ use crate::metre::rqq::RQQ;
 /// according to Clarence Barlow and Bernd Härpfer. However, here the
 /// indispensability values are inverted, so that the most important beat is
 /// always 0!
+#[allow(dead_code)]
 pub fn rqq_to_indispensability_list(rqq: RQQ) -> Result<Vec<usize>, String> {
     gnsm_to_indispensability_list(&rqq.to_gnsm()?)
 }

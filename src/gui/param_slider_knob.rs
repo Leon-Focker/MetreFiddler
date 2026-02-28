@@ -12,6 +12,7 @@ const GRANULAR_DRAG_MULTIPLIER: f32 = 0.1;
 /// A slider that integrates with NIH-plug's [`Param`] types. Use the
 /// [`set_style()`][ParamSliderExt::set_style()] method to change how the value gets displayed.
 #[derive(Lens)]
+#[allow(dead_code)]
 pub struct ParamSliderKnob {
     param_base: ParamWidgetBase,
 

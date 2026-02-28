@@ -7,7 +7,7 @@ use vizia_plug::vizia::icons::ICON_SETTINGS;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
 use atomic_float::AtomicF32;
-use nih_plug::{nih_dbg, nih_log};
+use nih_plug::{nih_log};
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::*;
 use crate::gui::metre_input::{MetreAorB, MetreInput};

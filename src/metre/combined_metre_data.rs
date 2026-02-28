@@ -28,6 +28,7 @@ impl Default for CombinedMetreData {
 
 impl CombinedMetreData {
 
+    #[allow(dead_code)]
     pub fn new(metre_a: MetreData, metre_b: MetreData) -> Self {
         let mut result =
             Self {

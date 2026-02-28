@@ -7,6 +7,7 @@ use vizia_plug::vizia::prelude::*;
 /// A slider that integrates with NIH-plug's [`Param`] types. Use the
 /// [`set_style()`][ParamSliderExt::set_style()] method to change how the value gets displayed.
 #[derive(Lens)]
+#[allow(dead_code)]
 pub struct ParamDisplayKnob {
     /// A specific label to use instead of displaying the parameter's value.
     label_override: Option<String>,
@@ -136,6 +137,7 @@ impl View for ParamDisplayKnob {
 }
 
 /// Extension methods for [`ParamDisplayKnob`] handles.
+#[allow(dead_code)]
 pub trait ParamDisplayKnobExt {
     /// Set slider to vertical
     fn set_vertical(self, value: bool) -> Self;

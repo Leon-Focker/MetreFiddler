@@ -42,6 +42,7 @@ pub struct ParamSliderV {
 /// How the [`ParamSliderV`] should display its values. Set this using
 /// [`ParamSliderExt::set_style()`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Data)]
+#[allow(dead_code)]
 pub enum ParamSliderStyle {
     /// Visualize the offset from the default value for continuous parameters with a default value
     /// at around half of its range, fill the bar from the left for discrete parameters and

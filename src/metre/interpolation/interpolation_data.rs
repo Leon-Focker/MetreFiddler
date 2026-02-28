@@ -29,6 +29,8 @@ pub struct InterpolationData {
 }
 
 impl InterpolationData {
+
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }
