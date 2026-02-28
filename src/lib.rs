@@ -1,13 +1,12 @@
 use nih_plug::prelude::*;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
-use crate::metre::interpolation::beat_origin::*;
-use crate::metre::interpolation::beat_origin::BeatOrigin::*;
+use crate::metre::beat_origin::BeatOrigin;
+use crate::metre::beat_origin::BeatOrigin::*;
 use crate::params::MetreFiddlerParams;
 use crate::util::{dry_wet, rescale};
 
 mod editor;
-mod metre_data;
 mod metre;
 mod gui;
 mod util;
@@ -178,9 +177,10 @@ impl MetreFiddler {
     /// the indispensability value for that beat and whether the thresholds would currently let
     /// a note through.
     fn get_current_indisp_data(&self) -> (usize, f32, usize, bool, BeatOrigin) {
-        let metric_data_a = &self.params.metre_data_a.lock().unwrap();
-        let metric_data_b = &self.params.metre_data_b.lock().unwrap();
-        let interpolation_data = &self.params.interpolation_data.lock().unwrap();
+        let metric_data = &self.params.combined_metre_data.lock().unwrap();
+        let metric_data_a = metric_data.metre_a();
+        let metric_data_b = metric_data.metre_b();
+        let interpolation_data = metric_data.interpolation_data();
         let interpolate_indisp = &self.params.interpolate_indisp.load(SeqCst);
         let max_len = metric_data_a.durations.len().max(metric_data_b.durations.len());
         let same_length: bool = metric_data_a.durations.len() == metric_data_b.durations.len();
@@ -204,7 +204,7 @@ impl MetreFiddler {
             current_beat_origin = Both;
             self.params.current_nr_of_beats.store(total_nr_beats, SeqCst);
         } else {
-            let durations = interpolation_data.get_interleaved_durations(self.interpolate);
+            let durations = metric_data.get_interleaved_durations(self.interpolate);
             let (idx, sum, total_nr_beats) = self.get_beat_idx_from_durations(durations);
             (current_beat_idx_a, _, _) = self.get_beat_idx_from_durations(metric_data_a.durations.iter().copied());
             (current_beat_idx_b, _, _) = self.get_beat_idx_from_durations(metric_data_b.durations.iter().copied());
@@ -214,7 +214,7 @@ impl MetreFiddler {
             current_beat_origin = match self.interpolate {
                 x if x <= 0.0 => MetreA,
                 x if x >= 1.0 => MetreB,
-                _ => interpolation_data.unique_start_time_origins[idx],
+                _ => interpolation_data.unique_start_time_origins()[idx],
             };
             self.params.current_nr_of_beats.store(total_nr_beats, SeqCst);
         }

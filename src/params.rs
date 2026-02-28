@@ -4,8 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use nih_plug::prelude::SmoothingStyle::Linear;
 use crate::editor;
-use crate::metre_data::{MetreData};
-use crate::metre::interpolation::interpolation::{InterpolationData};
+use crate::metre::combined_metre_data::CombinedMetreData;
 
 #[derive(Params)]
 pub struct MetreFiddlerParams {
@@ -45,16 +44,10 @@ pub struct MetreFiddlerParams {
     // This informs the Gui, that the phase_reset button needs resetting.
     pub reset_info: Arc<AtomicBool>,
     
-    // The `Arc<Mutex<CustomData>>` allows to share and modify it
+    // The `Arc<Mutex<>>` allows to share and modify it
     // between the GUI thread and the audio thread safely.
-    #[persist = "metre_data_a"]
-    pub metre_data_a: Arc<Mutex<MetreData>>,
-
-    #[persist = "metre_data_b"]
-    pub metre_data_b: Arc<Mutex<MetreData>>,
-
-    #[persist = "interpolation_data"]
-    pub interpolation_data: Arc<Mutex<InterpolationData>>,
+    #[persist = "combined_metre_data"]
+    pub combined_metre_data: Arc<Mutex<CombinedMetreData>>,
 
     // Interpolate between A and B
     #[id = "interpolate_a_b"]
@@ -98,11 +91,7 @@ impl Default for MetreFiddlerParams {
             )
                 .with_smoother(Linear(50.0)),
 
-            metre_data_a: Arc::new(Mutex::new(MetreData::default())),
-
-            metre_data_b: Arc::new(Mutex::new(MetreData::default())),
-
-            interpolation_data: Arc::new(Mutex::new(InterpolationData::default())),
+            combined_metre_data: Arc::new(Mutex::new(CombinedMetreData::default())),
 
             interpolate_a_b: FloatParam::new(
                 "Interpolate between Metre A and B",

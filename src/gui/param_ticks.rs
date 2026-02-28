@@ -1,7 +1,7 @@
 use vizia_plug::vizia::prelude::*;
-use crate::metre::interpolation::interpolation::InterpolationData;
-use crate::metre::interpolation::beat_origin::BeatOrigin;
-use crate::metre::interpolation::beat_origin::BeatOrigin::*;
+use crate::metre::beat_origin::BeatOrigin;
+use crate::metre::beat_origin::BeatOrigin::Both;
+use crate::metre::interpolation::interpolation_data::InterpolationData;
 use crate::util::{get_durations};
 
 #[derive(Lens)]
@@ -54,10 +54,11 @@ impl ParamTicks {
                 durations = interpolation_data.get(cx).get_interpolated_durations(interpolate).collect();
                 opacity_ids = vec![Both; durations.len()];
             } else {
-                let starts = interpolation_data.get(cx).unique_start_times;
-                let inits = interpolation_data.get(cx).unique_start_time_origins;
+                let interpolation_data = interpolation_data.get(cx);
+                let starts = interpolation_data.unique_start_times();
+                let inits = interpolation_data.unique_start_time_origins();
                 
-                durations = get_durations(&starts).collect();
+                durations = get_durations(starts).collect();
                 opacity_ids = inits[1..].to_vec();
             };
 

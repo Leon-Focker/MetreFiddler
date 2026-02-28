@@ -1,3 +1,4 @@
+use std::ops::DerefMut;
 use nih_plug::prelude::{Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
@@ -18,8 +19,8 @@ use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
 use crate::gui::param_label::{ParamLabel};
 use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
 use crate::gui::param_ticks::ParamTicks;
-use crate::metre::interpolation::interpolation::*;
-use crate::metre_data::parse_input;
+use crate::metre::interpolation::interpolation_data::InterpolationData;
+use crate::metre::metre_data::MetreData;
 
 // TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and
 //  sometimes it doesn't. (only on linux)
@@ -53,8 +54,8 @@ pub(crate) struct Data {
     pub(crate) params: Arc<MetreFiddlerParams>,
     pub(crate) screen: MetreFiddlerScreen,
     pub(crate) settings: Settings,
-    pub(crate) textbox_expanded: bool,
     pub(crate) interpolation_data_snapshot: InterpolationData,
+    pub(crate) textbox_expanded: bool,
     pub(crate) text_input_a: String,
     pub(crate) text_input_b: String,
     pub(crate) display_b: bool,
@@ -112,58 +113,39 @@ impl Model for Data {
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|my_event, _meta| match my_event {
             UpdateString(new_text, which) => {
-                match which {
-                    MetreA => {
-                        let mut metre_data =  self.params.metre_data_a.lock().unwrap();
-                        if self.text_input_a != *new_text {
-                            // update Data
-                            self.text_input_a = new_text.clone();
-                            // parse String and send to Plugin
-                            match parse_input(new_text) {
-                                Ok(new_metre_data) => {
-                                    let metre_data_b = self.params.metre_data_b.lock().unwrap();
-                                    *metre_data = new_metre_data;
-                                    self.max_threshold = metre_data.max.max(metre_data_b.max);
-                                    self.last_input_is_valid = true;
-                                    let new_interpolation_data =
-                                        InterpolationData::generate_interpolation_data(&metre_data.durations, &metre_data_b.durations, &metre_data.gnsm, &metre_data_b.gnsm);
-                                    self.interpolation_data_snapshot = new_interpolation_data.clone();
-                                    self.params.current_nr_of_beats.store(new_interpolation_data.clone().get_interpolated_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
-                                    *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
-                                },
-                                Err(err_string) => {
-                                    nih_log!("Failed to parse string: '{}': {}", self.text_input_a, err_string);
-                                    self.last_input_is_valid = false;
-                                },
-                            }
+                match MetreData::try_from(new_text.as_str()) {
+                    Ok(new_metre_data) => {
+                        let mut metric_data = self.params.combined_metre_data.lock().unwrap();
+
+                        match which {
+                            MetreA => {
+                                if self.text_input_a != *new_text {
+                                    self.text_input_a = new_text.clone();
+                                }
+                                metric_data.deref_mut().set_metre_a(new_metre_data);
+                            },
+                            MetreB => {
+                                if self.text_input_b != *new_text {
+                                    self.text_input_b = new_text.clone();
+                                }
+                                metric_data.deref_mut().set_metre_b(new_metre_data);
+                            },
+                        }
+
+                        self.max_threshold = metric_data.metre_a().max.max(metric_data.metre_b().max);
+                        self.interpolation_data_snapshot = metric_data.interpolation_data().clone();
+                        self.last_input_is_valid = true;
+                        if self.settings.interpolate_durations {
+                            self.params.current_nr_of_beats.store(metric_data.get_interpolated_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
+                        } else {
+                            self.params.current_nr_of_beats.store(metric_data.get_interleaved_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
                         }
                     },
-                    MetreB => {
-                        let mut metre_data = self.params.metre_data_b.lock().unwrap();
-                        if self.text_input_b != *new_text {
-                            // update Data
-                            self.text_input_b = new_text.clone();
-                            // parse String and send to Plugin
-                            match parse_input(new_text) {
-                                Ok(new_metre_data) => {
-                                    let metre_data_a = self.params.metre_data_a.lock().unwrap();
-                                    *metre_data = new_metre_data;
-                                    self.max_threshold = metre_data.max.max(metre_data_a.max);
-                                    self.last_input_is_valid = true;
-                                    let new_interpolation_data =
-                                        InterpolationData::generate_interpolation_data(&metre_data_a.durations, &metre_data.durations, &metre_data_a.gnsm, &metre_data.gnsm);
-                                    self.interpolation_data_snapshot = new_interpolation_data.clone();
-                                    self.params.current_nr_of_beats.store(new_interpolation_data.clone().get_interpolated_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
-                                    *self.params.interpolation_data.lock().unwrap() = new_interpolation_data;
-                                },
-                                Err(err_string) => {
-                                    nih_log!("Failed to parse string: '{}': {}", self.text_input_b, err_string);
-                                    self.last_input_is_valid = false;
-                                },
-                            }
-                        }
+                    Err(err_string) => {
+                        nih_log!("Failed to parse string: '{}': {}", new_text, err_string);
+                        self.last_input_is_valid = false;
                     },
-                };
+                }
             }
             SetScreen(screen) => {
                 self.screen = *screen;
@@ -234,8 +216,7 @@ pub(crate) fn create(
         // add new styling
         let _ = cx.add_stylesheet(NEW_STYLE);
 
-        let metre_data_a = params.metre_data_a.lock().unwrap();
-        let metre_data_b = params.metre_data_b.lock().unwrap();
+        let metric_data = params.combined_metre_data.lock().unwrap();
         let settings = Settings {
             interpolate_durations: params.interpolate_durations.load(SeqCst),
             interpolate_indisp: params.interpolate_indisp.load(SeqCst),
@@ -247,15 +228,15 @@ pub(crate) fn create(
             params: params.clone(),
             screen: MetreFiddlerScreen::Main,
             settings,
-            text_input_a: metre_data_a.input.clone(),
-            text_input_b: metre_data_b.input.clone(),
+            interpolation_data_snapshot: metric_data.interpolation_data().clone(),
+            max_threshold: metric_data.metre_a().max.max(metric_data.metre_b().max),
+            text_input_a: metric_data.metre_a().string.clone(),
+            text_input_b: metric_data.metre_b().string.clone(),
             last_input_is_valid: true,
-            max_threshold: metre_data_a.max.max(metre_data_b.max),
             display_b: false,
             display_metre_validity: true,
             displayed_position: params.displayed_position.clone(),
             check_for_phase_reset_toggle: false,
-            interpolation_data_snapshot: params.interpolation_data.lock().unwrap().clone(),
             textbox_expanded: false,
         }
             .build(cx);
