@@ -593,12 +593,10 @@ fn lower_part(cx: &mut Context) {
                                 .placement(Placement::Over)
                                 .background_color(Color::yellowgreen())
                                 .height(Pixels(75.0)); // TODO adjust size or add scrollable view in future?
+                        } else if display.get(cx) {
+                            MetreInput::new(cx, Data::text_input_b, MetreB);
                         } else {
-                            if display.get(cx) {
-                                MetreInput::new(cx, Data::text_input_b, MetreB);
-                            } else {
                                 MetreInput::new(cx, Data::text_input_a, MetreA);
-                            }
                         }
                     });
                 });

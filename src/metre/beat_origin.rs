@@ -9,7 +9,7 @@ pub enum BeatOrigin {
 }
 
 impl BeatOrigin {
-    pub fn to_opacity(&self, interpolate: f32) -> u8 {
+    pub fn to_opacity(self, interpolate: f32) -> u8 {
         let id = match self {
             BeatOrigin::MetreA => -1.0,
             BeatOrigin::MetreB => 0.0,

@@ -52,7 +52,7 @@ impl RQQ {
     /// 
     /// assert_eq!(gnsm, vec![1, 0, 0, 0]);
     /// ```
-    pub fn to_gnsm(self) -> Result<Vec<usize>, String>{
+    pub fn to_gnsm(&self) -> Result<Vec<usize>, String>{
         match self {
             Elem(_) => Err("rqq.to_gnsm got malformed rqq list".to_string()),
             List(vec) => {
@@ -72,7 +72,7 @@ impl RQQ {
         }
     }
 
-    fn to_gnsm_aux(self, lvl: usize) -> Result<Vec<usize>, String> {
+    fn to_gnsm_aux(&self, lvl: usize) -> Result<Vec<usize>, String> {
         let mut ls: Vec<usize> = Vec::new();
         
         if let List(vec) = self {

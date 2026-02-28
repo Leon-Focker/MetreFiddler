@@ -132,12 +132,10 @@ impl MetreFiddler {
         let normalized_vel =
             if many_velocities {
                 (1.0 / (indisp_value + 1) as f32).powf(2.0*(1.0 - skew))
+            } else if self.is_accent(indisp_value) {
+                v_min
             } else {
-                if self.is_accent(indisp_value) {
-                    v_min
-                } else {
-                    v_max
-                }
+                v_max
             };
         // rescaled by vel_min and vel_max parameters
         if v_min == v_max {
@@ -154,20 +152,16 @@ impl MetreFiddler {
         let mut current_beat_duration_sum: f32 = 0.0;
         let mut nr_beats = 0;
 
-        loop {
-            if let Some(dur) = durations.next() {
-                nr_beats += 1;
+        while let Some(dur) = durations.next() {
+            nr_beats += 1;
 
-                if current_beat_duration_sum + dur >= position {
-                    nr_beats += durations.count();
-                    break;
-                }
-
-                current_beat_duration_sum += dur;
-                current_beat_idx += 1;
-            } else {
+            if current_beat_duration_sum + dur >= position {
+                nr_beats += durations.count();
                 break;
             }
+
+            current_beat_duration_sum += dur;
+            current_beat_idx += 1;
         }
 
         (current_beat_idx, current_beat_duration_sum, nr_beats)

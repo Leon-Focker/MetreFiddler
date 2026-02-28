@@ -21,7 +21,7 @@ pub fn gnsm_to_indispensability_list(gnsm: &[usize]) -> Result<Vec<usize>, Strin
     let mut remaining_indices: Vec<usize> = vec![];
     let mut layer: isize = *gnsm.iter().max().unwrap() as isize;
 
-    get_indices(layer, &gnsm, &mut indices);
+    get_indices(layer, gnsm, &mut indices);
     let mut old_indices = indices.clone();
 
     for (e, i) in fundamental_indispensability(indices.len())
@@ -39,7 +39,7 @@ pub fn gnsm_to_indispensability_list(gnsm: &[usize]) -> Result<Vec<usize>, Strin
 
         if remaining_indices.is_empty() {
             layer -= 1;
-            get_indices(layer, &gnsm, &mut indices);
+            get_indices(layer, gnsm, &mut indices);
             copy_from_neighbours(&indices, &mut set_indices, &mut result, len);
         } else {
             copy_from_neighbours(&remaining_indices, &mut set_indices, &mut result, len);
@@ -89,7 +89,7 @@ fn next_set_index(result: &[isize], mut idx: usize, len: usize) -> usize {
     }
 }
 
-fn copy_from_neighbours(indices: &[usize], set_indices: &mut Vec<usize>, result: &mut [isize], len: usize) -> () {
+fn copy_from_neighbours(indices: &[usize], set_indices: &mut Vec<usize>, result: &mut [isize], len: usize) {
     set_indices.clear();
     for i in 0..indices.len() {
         let idx = indices[i];

@@ -97,8 +97,8 @@ impl InterpolationData {
     }
 
     fn set_interleaved_and_starts(mut self, durs_a: &[f32], durs_b: &[f32], gnsm_a: &[usize], gnsm_b: &[usize]) -> Self {
-        let mut starts_a = get_start_times(&durs_a);
-        let mut starts_b = get_start_times(&durs_b);
+        let mut starts_a = get_start_times(durs_a);
+        let mut starts_b = get_start_times(durs_b);
         let max_len = durs_a.len() + durs_b.len();
 
         starts_a.push(1.0);
@@ -180,7 +180,7 @@ fn pair_identical_start_times(result: &mut IndexPairs, data_a: &InterpolationDat
 /// While durations A does have some metrical hierarchy indicated by gnsm_a, durations B does not.
 /// Find the beat with the highest metrical value in durations A and pair it with the closest beat from B by start-time
 fn pair_higher_stratum_by_time(data_a: &InterpolationDataHelper, data_b: &InterpolationDataHelper)  -> (Option<usize>, Option<usize>) {
-    let no_strata_left_b = data_b.gnsm.iter().all(|&x| x == *data_b.gnsm.get(0).unwrap_or(&0));
+    let no_strata_left_b = data_b.gnsm.iter().all(|&x| x == *data_b.gnsm.first().unwrap_or(&0));
     assert!(no_strata_left_b);
     // find the indices which belong to the highest stratum
     let highest_stratum = *data_a.gnsm.iter().max().unwrap_or(&1);
@@ -211,8 +211,8 @@ fn pair_highest_stratus (data_a: &InterpolationDataHelper, data_b: &Interpolatio
 /// Return a vector of pairs of indices.
 fn get_duration_pairs(data_a: InterpolationDataHelper, data_b: InterpolationDataHelper) -> IndexPairs {
     let max_len = data_a.len.max(data_b.len);
-    let no_strata_left_a = data_a.gnsm.iter().all(|&x| x == *data_a.gnsm.get(0).unwrap_or(&0));
-    let no_strata_left_b = data_b.gnsm.iter().all(|&x| x == *data_b.gnsm.get(0).unwrap_or(&0));
+    let no_strata_left_a = data_a.gnsm.iter().all(|&x| x == *data_a.gnsm.first().unwrap_or(&0));
+    let no_strata_left_b = data_b.gnsm.iter().all(|&x| x == *data_b.gnsm.first().unwrap_or(&0));
     let mut result = IndexPairs::new_with_len(max_len);
 
     // Apply one of the methods below (either complete result or match some indices),
