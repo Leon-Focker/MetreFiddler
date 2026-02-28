@@ -21,8 +21,6 @@ use crate::gui::param_ticks::ParamTicks;
 use crate::metre::interpolation::interpolation::*;
 use crate::metre_data::parse_input;
 
-
-
 // TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and
 //  sometimes it doesn't. (only on linux)
 

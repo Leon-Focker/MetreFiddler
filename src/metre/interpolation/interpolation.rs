@@ -1,35 +1,17 @@
 use serde::{Deserialize, Serialize};
 use vizia_plug::vizia::prelude::Data;
+use crate::metre::interpolation::beat_origin::BeatOrigin;
 use crate::metre::interpolation::index_pairs::IndexPairs;
-use crate::metre::interpolation::interpolation::BeatOrigin::{Both, MetreA, MetreB};
 use crate::util::{approx_eq, dry_wet, get_durations, get_start_times};
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, Data, PartialEq)]
-pub enum BeatOrigin {
-    MetreA,
-    MetreB,
-    Both,
-}
 
-impl BeatOrigin {
-    pub fn to_opacity(&self, interpolate: f32) -> u8 {
-        let id = match self {
-            MetreA => -1.0,
-            MetreB => 0.0,
-            Both => 1.0,
-        };
-        ((id + interpolate).abs().min(1.0) * 255.0).round() as u8
-    }
-}
-
-/// TODO update Doc
-/// Holds pairs of durations (one for each of two MetreDatas). If one metric structure has more
-/// beats than the other, some of its beats will be paired with 0.0.
-/// Its main purpose is storing pairs of durations (one for each of two MetreDatas).
+// TODO could this be merged with MetreData, since some fields are already doubled and the kinda have the same purpose?
+/// Holds metric data for A and B and resulting information used for interpolating between the two.
+/// Most important are the duration_pairs. This holds pairs of durations (one for each of two MetreDatas). 
 /// If one metric structure has more beats than the other, some of its beats will be paired with 0.0.
-/// The same pairing is done with the metres gnsm lists.
-/// Additionally, a sorted list with all unique start-times is stored, paired with a number that indicates
-/// whether that start time appears in both metres or just A or B.
+/// Additionally, a sorted list with all unique start-times is stored, plus a list of BeatOrigin, 
+/// telling us in which of the two Metres a start-time came from. These start-times correlate with the
+/// stored interleaved_durations and interleaved_gnsm.
 #[derive(Debug, Serialize, Deserialize, Clone, Data)]
 pub struct InterpolationData {
     durations_a: Vec<f32>,
@@ -64,7 +46,7 @@ impl Default for InterpolationData {
             interleaved_durations: vec![0.25; 4],
             interleaved_gnsm: vec![1, 0, 0, 0],
             unique_start_times: vec![0.0, 0.25, 0.5, 0.75],
-            unique_start_time_origins: vec![Both; 4],
+            unique_start_time_origins: vec![BeatOrigin::Both; 4],
         }
     }
 }
@@ -118,31 +100,31 @@ impl InterpolationData {
                 (Some(&a), Some(&b)) => {
                     if approx_eq(a, b, 0.001) {
                         unique_start_times.push(a);
-                        unique_start_time_origins.push(Both);
+                        unique_start_time_origins.push(BeatOrigin::Both);
                         interleaved_gnsm.push(gnsm_a[i % gnsm_a.len()].max(gnsm_b[k % gnsm_b.len()]));
                         i += 1;
                         k += 1;
                     } else if a < b {
                         unique_start_times.push(a);
-                        unique_start_time_origins.push(MetreA);
+                        unique_start_time_origins.push(BeatOrigin::MetreA);
                         interleaved_gnsm.push(gnsm_a[i % gnsm_a.len()]);
                         i += 1;
                     } else {
                         unique_start_times.push(b);
-                        unique_start_time_origins.push(MetreB);
+                        unique_start_time_origins.push(BeatOrigin::MetreB);
                         interleaved_gnsm.push(gnsm_b[k % gnsm_b.len()]);
                         k += 1;
                     }
                 }
                 (Some(&a), None) => {
                     unique_start_times.push(a);
-                    unique_start_time_origins.push(MetreA);
+                    unique_start_time_origins.push(BeatOrigin::MetreA);
                     interleaved_gnsm.push(gnsm_a[i % gnsm_a.len()]);
                     i += 1;
                 }
                 (None, Some(&b)) => {
                     unique_start_times.push(b);
-                    unique_start_time_origins.push(MetreB);
+                    unique_start_time_origins.push(BeatOrigin::MetreB);
                     interleaved_gnsm.push(gnsm_b[k % gnsm_b.len()]);
                     k += 1;
                 }
@@ -358,17 +340,3 @@ fn call_with_slices(data_a: &InterpolationDataHelper, data_b: &InterpolationData
     };
     generate_interpolation_data_aux(new_data_a, new_data_b)
 }
-
-// if same length or gnsm all 0
-// -> append 0.0 in the end if necessary
-// else:
-// if all values are None, check for same starttimes (this is only necessary once)
-// -> this fills some gaps
-// check whether some places are not set yet
-// all set -> return vec
-// not all set -> check for difference in length between unset passage
-// is <= 1 -> append 0.0 in the end
-// greater than 1 ->
-// if both have different strata left, match beats from the same strata (with gnsm)
-// if both have no strata left, append 0.0 in the end
-// else find match for the beat from higher strata by closest start-time...

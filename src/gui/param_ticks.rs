@@ -1,9 +1,8 @@
-use nih_plug::{nih_dbg, nih_log};
-use num_traits::real::Real;
 use vizia_plug::vizia::prelude::*;
-use crate::metre::interpolation::interpolation::{BeatOrigin, InterpolationData};
-use crate::metre::interpolation::interpolation::BeatOrigin::Both;
-use crate::util::{get_durations, get_start_times};
+use crate::metre::interpolation::interpolation::InterpolationData;
+use crate::metre::interpolation::beat_origin::BeatOrigin;
+use crate::metre::interpolation::beat_origin::BeatOrigin::*;
+use crate::util::{get_durations};
 
 #[derive(Lens)]
 pub struct ParamTicks {}

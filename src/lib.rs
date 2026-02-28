@@ -1,8 +1,8 @@
 use nih_plug::prelude::*;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::SeqCst;
-use crate::metre::interpolation::interpolation::{BeatOrigin};
-use crate::metre::interpolation::interpolation::BeatOrigin::*;
+use crate::metre::interpolation::beat_origin::*;
+use crate::metre::interpolation::beat_origin::BeatOrigin::*;
 use crate::params::MetreFiddlerParams;
 use crate::util::{dry_wet, rescale};
 
@@ -191,9 +191,7 @@ impl MetreFiddler {
         let current_beat_duration_sum;
         let current_beat_origin: BeatOrigin;
 
-        // TODO lots still going wrong here, for example no_many_velocities + don't_interpolate
-        // TODO Sending Midi for dont_interpolate needs debugging
-        // TODO how should the interpolation of metres actually sound?
+        // TODO no_many_velocities + don't_interpolate is a bit confusing for the user
 
         if self.interpolate_durs {
             let durations = interpolation_data.get_interpolated_durations(self.interpolate);
