@@ -168,8 +168,8 @@ impl MetreFiddler {
     }
 
     /// return a tuple with the index of the current beat, the normalized duration up until that beat,
-    /// the indispensability value for that beat and whether the thresholds would currently let
-    /// a note through.
+    /// the indispensability value for that beat, whether the thresholds would currently let
+    /// a note through and the Origin of the current Beat.
     fn get_current_indisp_data(&self) -> (usize, f32, usize, bool, BeatOrigin) {
         let metric_data = &self.params.combined_metre_data.lock().unwrap();
         let metric_data_a = metric_data.metre_a();
@@ -244,11 +244,7 @@ impl MetreFiddler {
 
     /// Get a MIDI event and either return none (filter it) or return it with a new velocity
     /// value (according to the current metric position).
-    fn process_event<S: SysExMessage>(&mut self, event: NoteEvent<S>) -> Option<NoteEvent<S>> {
-        let (_,_, indisp_val, let_through, _) = self.get_current_indisp_data();
-        let vel: f32 = self.calculate_current_velocity(indisp_val);
-
-        // Return new MIDI event (or None)
+    fn process_note_event<S: SysExMessage>(&mut self, event: NoteEvent<S>) -> Option<NoteEvent<S>> {
         match event {
             NoteEvent::NoteOn {
                 timing,
@@ -256,7 +252,11 @@ impl MetreFiddler {
                 channel,
                 note,
                 ..
-            } => { if let_through {
+            } => {
+                let (_,_, indisp_val, let_through, _) = self.get_current_indisp_data();
+                let vel: f32 = self.calculate_current_velocity(indisp_val);
+
+                if let_through {
                 Some(NoteEvent::NoteOn {
                     timing,
                     voice_id,
@@ -317,10 +317,9 @@ impl Plugin for MetreFiddler {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        const NR_SAMPLES_FOR_START_OF_BEAT: u64 = 100;
+        let nr_samples_for_start_of_beat: u64 = (self.sample_rate / 500.0).ceil() as u64;
         let mut current_sample: u32 = 0;
         let buffer_len = buffer.samples();
-        let process_events: bool = !self.params.send_midi.value();
 
         // Handle the reset_phase button:
         // automated value
@@ -336,7 +335,7 @@ impl Plugin for MetreFiddler {
 
         // either process events or send some
         // TODO is it possible to process events while sending them also??
-        if process_events {
+        if !self.params.send_midi.value() {
             let mut last_note_was_let_through = true;
             let mut elapsed_samples: u32;
 
@@ -371,7 +370,7 @@ impl Plugin for MetreFiddler {
 
                 match event {
                     NoteEvent::NoteOn { .. } => {
-                        if let Some(event) = self.process_event(event) {
+                        if let Some(event) = self.process_note_event(event) {
                             context.send_event(event);
                             last_note_was_let_through = true;
                         } else {
@@ -433,7 +432,7 @@ impl Plugin for MetreFiddler {
                 let nth_sample_of_beat: u64 = nth_sample_in_bar.saturating_sub(beat_first_sample);
 
                 // Are we at the beginning of a beat?
-                if nth_sample_of_beat < NR_SAMPLES_FOR_START_OF_BEAT {
+                if nth_sample_of_beat < nr_samples_for_start_of_beat {
                     // Send midi when we haven't already sent a note for this idx
                     if self.last_sent_beat_idx != current_beat_idx as i32 && let_through {
                         let vel = {
