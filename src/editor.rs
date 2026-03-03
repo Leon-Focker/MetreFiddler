@@ -455,6 +455,7 @@ fn duration_position(cx: &mut Context) {
                             // BPM Toggle
                             ParamButton::new(cx, Data::params, |params|
                                 &params.use_bpm)
+                                .class("red_button")
                                 .with_label("  Use BPM")
                                 .width(Pixels(100.0));
                             // Reset Phase
@@ -697,42 +698,32 @@ fn lower_part(cx: &mut Context) {
 }
 
 fn settings_window(cx: &mut Context) {
+    Element::new(cx).height(Pixels(25.0));
+    Label::new(cx, "Settings")
+        .alignment(Alignment::Center)
+        .width(Stretch(1.0))
+        .font_family(vec![FamilyOwned::Named(String::from(NOTO_SANS))])
+        .font_weight(FontWeightKeyword::Thin)
+        .font_size(40.0)
+        .height(Pixels(50.0));
+
+    Element::new(cx).height(Pixels(25.0));
+
     // Settings
     ScrollView::new(cx, |cx| {
         Binding::new(cx, Data::settings, |cx, settings| {
-            Button::new(cx, |cx|
-                if settings.get(cx).interpolate_durations {
-                    Label::new(cx, "Interpolate Durations")
-                } else {
-                    Label::new(cx, "Don't Interpolate Durations")
-                })
-                .on_press(|cx| {cx.emit(ToggleInterpolateDurs)});
-            Button::new(cx, |cx|
-                if settings.get(cx).interpolate_indisp {
-                    Label::new(cx, "Interpolate Indispensability Values")
-                } else {
-                    Label::new(cx, "Don't Interpolate Indispensability Values")
-                })
-                .on_press(|cx| {cx.emit(ToggleInterpolateIndisp)});
-            Button::new(cx, |cx|
-                if settings.get(cx).many_velocities {
-                    Label::new(cx, "Many Velocities")
-                } else {
-                    Label::new(cx, "Not Many Velocities")
-                })
-                .on_press(|cx| {cx.emit(ToggleManyVelocities)});
-            Button::new(cx, |cx|
-                if settings.get(cx).midi_out_one_note {
-                    Label::new(cx, "Output just one Note")
-                } else {
-                    Label::new(cx, "Output many notes")
-                })
-                .on_press(|cx| {cx.emit(ToggleMidiOutput)});
+            VStack::new(cx, |cx| {
+                settings_button(cx, settings.get(cx).interpolate_durations, "Interpolate Durations".to_string(), ToggleInterpolateDurs);
+                settings_button(cx, settings.get(cx).interpolate_indisp, "Interpolate Indispensability Values".to_string(), ToggleInterpolateIndisp);
+                settings_button(cx, !settings.get(cx).many_velocities, "Accents instead of unique velocities".to_string(), ToggleManyVelocities);
+                settings_button(cx, !settings.get(cx).midi_out_one_note, "Output many pitches".to_string(), ToggleMidiOutput);
+            });
         })
     })
         .width(Stretch(1.0))
         .height(Stretch(1.0));
 
+    // Settings Icon
     HStack::new(cx, |cx| {
         ZStack::new(cx, |cx| {
             Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0)).cursor(CursorIcon::Hand);
@@ -743,5 +734,27 @@ fn settings_window(cx: &mut Context) {
             .height(Pixels(24.0));
         Element::new(cx)
             .width(Pixels(24.0));
-    });
+    })
+        .width(Stretch(1.0))
+        .alignment(Alignment::Right)
+        .height(Pixels(60.0));
+}
+
+fn settings_button(cx: &mut Context, is_on: bool, label: String, event: MetreFiddlerEvent) {
+    HStack::new(cx, move |cx| {
+        Element::new(cx).width(Pixels(48.0));
+        Button::new(cx, |cx|
+            if is_on {
+                Label::new(cx, "On")
+            } else {
+                Label::new(cx, "Off")
+            })
+            .class("red_button")
+            .checked(is_on)
+            .width(Pixels(50.0))
+            .on_press(move |cx| cx.emit(event.clone()));
+        Element::new(cx).width(Pixels(24.0));
+        Label::new(cx, label);
+    })
+        .alignment(Alignment::Left);
 }
