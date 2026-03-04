@@ -2,6 +2,7 @@ use nih_plug::prelude::*;
 use vizia_plug::ViziaState;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::Ordering::Relaxed;
 use nih_plug::prelude::SmoothingStyle::Linear;
 use crate::editor;
 use crate::metre::combined_metre_data::CombinedMetreData;
@@ -111,36 +112,31 @@ impl Default for MetreFiddlerParams {
                 "Minimum for the velocity output",
                 0.0,
                 FloatRange::Linear { min: 0.0, max: 127.0 },
-            )
-                .with_smoother(Linear(50.0)),
+            ),
 
             velocity_max: FloatParam::new(
                 "Maximum for the velocity output",
                 127.0,
                 FloatRange::Linear { min: 0.0, max: 127.0 },
-            )
-                .with_smoother(Linear(50.0)),
+            ),
 
             lower_threshold: FloatParam::new(
                 "Lower Threshold for the Midi output",
                 0.0,
                 FloatRange::Linear { min: 0.0, max: 1.0},
-            )
-                .with_smoother(Linear(50.0)),
+            ),
 
             upper_threshold: FloatParam::new(
                 "Upper Threshold for the Midi output",
                 1.0,
                 FloatRange::Linear { min: 0.0, max: 1.0},
-            )
-                .with_smoother(Linear(50.0)),
+            ),
 
             velocity_skew: FloatParam::new(
                 "Skew value for Velocity Range",
                 0.5,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
-            )
-                .with_smoother(Linear(50.0)),
+            ),
 
             reset_phase: BoolParam::new(
                 "Reset metric phasse",
@@ -170,6 +166,69 @@ impl Default for MetreFiddlerParams {
             midi_out_one_note: AtomicBool::from(false),
             
             interpolate_indisp: AtomicBool::from(true),
+            
+            // TODO new potential settings: Note Out Duration, Note out base pitch and channel
+        }
+    }
+}
+
+impl MetreFiddlerParams {
+    /// Return all plain values of Parameters in a ParamsSnapShot,
+    /// Parameters that need smoothing will get that somewhere else. 
+    pub fn snapshot(&self) -> ParamsSnapShot {
+        ParamsSnapShot {
+            vel_min: self.velocity_min.value(),
+            vel_max: self.velocity_max.value(),
+            vel_skew: self.velocity_skew.value(),
+            lower_threshold: self.lower_threshold.value(),
+            upper_threshold: self.upper_threshold.value(),
+            bar_pos: self.bar_position.value(),
+            interpolate: self.interpolate_a_b.value(),
+            use_bpm: self.use_bpm.value(),
+            metric_duration: self.metric_dur_selector.value(),
+            current_nr_of_beats: self.current_nr_of_beats.load(Relaxed),
+            output_one_pitch: self.midi_out_one_note.load(Relaxed),
+            many_velocities: self.many_velocities.load(Relaxed),
+            interpolate_durs: self.interpolate_durations.load(Relaxed),
+            interpolate_indisp: self.interpolate_indisp.load(Relaxed),
+        }
+    }
+}
+
+pub struct ParamsSnapShot {
+    pub vel_min: f32,
+    pub vel_max: f32,
+    pub vel_skew: f32,
+    pub lower_threshold: f32,
+    pub upper_threshold: f32,
+    pub bar_pos: f32,
+    pub interpolate: f32,
+    pub use_bpm: bool,
+    pub metric_duration: f32,
+    pub current_nr_of_beats: usize,
+    pub output_one_pitch: bool,
+    pub many_velocities: bool,
+    pub interpolate_durs: bool,
+    pub interpolate_indisp: bool,
+}
+
+impl Default for ParamsSnapShot {
+    fn default() -> Self {
+        Self {
+            vel_min: 0.0,
+            vel_max: 1.0,
+            vel_skew: 0.5,
+            lower_threshold: 0.0,
+            upper_threshold: 1.0,
+            bar_pos: 0.0,
+            interpolate: 0.0,
+            use_bpm: false,
+            metric_duration: 1.0,
+            current_nr_of_beats: 0,
+            output_one_pitch: false,
+            many_velocities: true,
+            interpolate_durs: true,
+            interpolate_indisp: true,
         }
     }
 }

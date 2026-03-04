@@ -1,9 +1,9 @@
 use nih_plug::prelude::*;
 use std::sync::{Arc};
-use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::Ordering::{Relaxed, SeqCst};
 use crate::metre::beat_origin::BeatOrigin;
 use crate::metre::beat_origin::BeatOrigin::*;
-use crate::params::MetreFiddlerParams;
+use crate::params::{MetreFiddlerParams, ParamsSnapShot};
 use crate::util::{dry_wet, rescale};
 
 mod editor;
@@ -14,51 +14,33 @@ mod params;
 
 struct MetreFiddler {
     params: Arc<MetreFiddlerParams>,
+    params_snapshot: ParamsSnapShot,
+
     sample_rate: f32,
     progress_in_samples: u64, // TODO maybe this should be reset after each full measure??
     last_reset_phase_value: bool,
     last_sent_beat_idx: i32,
-    note_off_buffer: Vec<(u8, i64)>,
+    note_off_buffer: Vec<Option<(u8, i32, i64)>>,
     was_playing: bool,
-
-    // TODO these should not be necessary, because they are just parameters:
-    vel_min: f32,
-    vel_max: f32,
-    vel_skew: f32,
-    lower_threshold: f32,
-    upper_threshold: f32,
-    metric_duration: f32,
-    bar_pos: f32,
-    interpolate: f32,
-    interpolate_durs: bool,
-    interpolate_indisp: bool,
 }
+
+// TODO check concurrency of current_nr_beats
 
 impl Default for MetreFiddler {
     fn default() -> Self {
         let default_params = Arc::new(MetreFiddlerParams::default());
         Self {
             params: default_params.clone(),
+            params_snapshot: ParamsSnapShot::default(),
             sample_rate: 1.0,
             last_reset_phase_value: false,
             last_sent_beat_idx: -1,
-            note_off_buffer: vec![(0, -1), (0, -1), (0, -1), (0, -1)],
+            note_off_buffer: vec![None; 8],
             was_playing: false,
-            metric_duration: 1.0,
             progress_in_samples: 0,
-            vel_min: 0.0,
-            vel_max: 1.0,
-            vel_skew: 0.5,
-            lower_threshold: 0.0,
-            upper_threshold: 1.0,
-            bar_pos: 0.0,
-            interpolate: 0.0,
-            interpolate_durs: true,
-            interpolate_indisp: true,
         }
     }
 }
-
 
 impl MetreFiddler {
 
@@ -73,24 +55,8 @@ impl MetreFiddler {
     }
 
     fn is_indisp_val_within_thresholds(&self, indisp_val: usize, max_indisp_val: usize) -> bool {
-        indisp_val >= (self.lower_threshold.min(self.upper_threshold) * max_indisp_val as f32) as usize
-            && indisp_val <= (self.upper_threshold * max_indisp_val as f32) as usize
-    }
-
-    fn update_velocity_parameters(&mut self) {
-        self.vel_min = self.params.velocity_min.value();
-        self.vel_max = self.params.velocity_max.value();
-        self.vel_skew = self.params.velocity_skew.value();
-        self.lower_threshold = self.params.lower_threshold.value();
-        self.upper_threshold = self.params.upper_threshold.value();
-    }
-
-    fn update_velocity_parameters_smoothed_with_step(&mut self, step: u32) {
-        self.vel_min = self.params.velocity_min.smoothed.next_step(step);
-        self.vel_max = self.params.velocity_max.smoothed.next_step(step);
-        self.vel_skew = self.params.velocity_skew.smoothed.next_step(step);
-        self.lower_threshold = self.params.lower_threshold.smoothed.next_step(step);
-        self.upper_threshold = self.params.upper_threshold.smoothed.next_step(step);
+        indisp_val >= (self.params_snapshot.lower_threshold.min(self.params_snapshot.upper_threshold) * max_indisp_val as f32) as usize
+            && indisp_val <= (self.params_snapshot.upper_threshold * max_indisp_val as f32) as usize
     }
 
     // Get the normalized time within a measure (between 0.0 and 1.0) depending on the current
@@ -100,10 +66,11 @@ impl MetreFiddler {
         let time = self.progress_in_samples as f32 / self.sample_rate;
         // Get the normalized time within a measure (between 0.0 and 1.0)
         if self.params.use_position.value() {
-            self.bar_pos
+            self.params_snapshot.bar_pos
         } else {
-            let pos = time.rem_euclid(self.metric_duration) / self.metric_duration;
-            self.params.displayed_position.store(pos, SeqCst);
+            let duration = self.params_snapshot.metric_duration;
+            let pos = time.rem_euclid(duration) / duration;
+            self.params.displayed_position.store(pos, Relaxed);
             pos
         }
     }
@@ -111,23 +78,23 @@ impl MetreFiddler {
     // set metric_duration to length of a quarter note times the slider
     fn set_metric_duration_for_bpm(&mut self, tempo: Option<f64>) {
         let one_crotchet = 60.0 / tempo.unwrap_or(60.0);
-        self.metric_duration *= one_crotchet as f32;
+        self.params_snapshot.metric_duration *= one_crotchet as f32;
     }
 
     // TODO this shouldn't be a method
     fn is_accent(&self, indisp_value: usize) -> bool {
-        let skew = self.vel_skew;
-        let nr_beats = self.params.current_nr_of_beats.load(SeqCst) as f32;
+        let skew = self.params_snapshot.vel_skew;
+        let nr_beats = self.params.current_nr_of_beats.load(Relaxed) as f32;
         let nr_of_accents = (skew * nr_beats).round() as usize;
         indisp_value >= nr_of_accents
     }
 
     fn calculate_current_velocity(&self, indisp_value: usize) -> f32 {
         // The current velocity Parameters
-        let v_min: f32 = self.vel_min.min(self.vel_max) / 127.0;
-        let v_max: f32 = self.vel_max / 127.0;
-        let skew = self.vel_skew;
-        let many_velocities = self.params.many_velocities.load(SeqCst);
+        let v_min: f32 = self.params_snapshot.vel_min.min(self.params_snapshot.vel_max) / 127.0;
+        let v_max: f32 = self.params_snapshot.vel_min.max(self.params_snapshot.vel_max) / 127.0;
+        let skew = self.params_snapshot.vel_skew;
+        let many_velocities = self.params_snapshot.many_velocities;
         // Velocity in range 0.0 - 1.0,
         let normalized_vel =
             if many_velocities {
@@ -171,11 +138,11 @@ impl MetreFiddler {
     /// the indispensability value for that beat, whether the thresholds would currently let
     /// a note through and the Origin of the current Beat.
     fn get_current_indisp_data(&self) -> (usize, f32, usize, bool, BeatOrigin) {
+        // TODO ideally we never want to lock in the audio thread, can this be replaced with rtrb?
         let metric_data = &self.params.combined_metre_data.lock().unwrap();
         let metric_data_a = metric_data.metre_a();
         let metric_data_b = metric_data.metre_b();
         let interpolation_data = metric_data.interpolation_data();
-        let interpolate_indisp = &self.params.interpolate_indisp.load(SeqCst);
         let max_len = metric_data_a.durations.len().max(metric_data_b.durations.len());
         let same_length: bool = metric_data_a.durations.len() == metric_data_b.durations.len();
 
@@ -187,8 +154,8 @@ impl MetreFiddler {
 
         // TODO no_many_velocities + don't_interpolate is a bit confusing for the user
 
-        if self.interpolate_durs {
-            let durations = interpolation_data.get_interpolated_durations(self.interpolate);
+        if self.params_snapshot.interpolate_durs {
+            let durations = interpolation_data.get_interpolated_durations(self.params_snapshot.interpolate);
             let (idx, sum, total_nr_beats) = self.get_beat_idx_from_durations(durations);
 
             current_beat_idx_a = idx;
@@ -198,14 +165,14 @@ impl MetreFiddler {
             current_beat_origin = Both;
             self.params.current_nr_of_beats.store(total_nr_beats, SeqCst);
         } else {
-            let durations = metric_data.get_interleaved_durations(self.interpolate);
+            let durations = metric_data.get_interleaved_durations(self.params_snapshot.interpolate);
             let (idx, sum, total_nr_beats) = self.get_beat_idx_from_durations(durations);
             (current_beat_idx_a, _, _) = self.get_beat_idx_from_durations(metric_data_a.durations.iter().copied());
             (current_beat_idx_b, _, _) = self.get_beat_idx_from_durations(metric_data_b.durations.iter().copied());
 
             current_beat_idx = idx;
             current_beat_duration_sum = sum;
-            current_beat_origin = match self.interpolate {
+            current_beat_origin = match self.params_snapshot.interpolate {
                 x if x <= 0.0 => MetreA,
                 x if x >= 1.0 => MetreB,
                 _ => interpolation_data.unique_start_time_origins()[idx],
@@ -214,11 +181,11 @@ impl MetreFiddler {
         }
 
         let indisp_val_temp: f32 =
-            if *interpolate_indisp || current_beat_origin == Both {
+            if self.params_snapshot.interpolate_indisp|| current_beat_origin == Both {
                 dry_wet(
                     *metric_data_a.value.get(current_beat_idx_a).unwrap_or(&0),
                     *metric_data_b.value.get(current_beat_idx_b).unwrap_or(&0),
-                    self.interpolate)
+                    self.params_snapshot.interpolate)
             } else {
                 match current_beat_origin {
                     MetreA => *metric_data_a.value.get(current_beat_idx_a).unwrap_or(&0) as f32,
@@ -318,9 +285,16 @@ impl Plugin for MetreFiddler {
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         let nr_samples_for_start_of_beat: u64 = (self.sample_rate / 500.0).ceil() as u64;
-        let mut current_sample: u32 = 0;
+        let mut next_event = context.next_event();
         let buffer_len = buffer.samples();
 
+        // Get all plain parameter values once here
+        self.params_snapshot = self.params.snapshot();
+
+        // reset progress when playback stops. // TODO rethink while reworking how progress works
+        self.maybe_reset_progress(context.transport().playing);
+
+        // TODO this is still dodgy and only happens once per buffer
         // Handle the reset_phase button:
         // automated value
         if self.params.reset_phase.value() {
@@ -333,99 +307,52 @@ impl Plugin for MetreFiddler {
         }
         self.last_reset_phase_value = self.params.reset_phase.value();
 
-        // either process events or send some
-        // TODO is it possible to process events while sending them also??
-        if !self.params.send_midi.value() {
-            let mut last_note_was_let_through = true;
-            let mut elapsed_samples: u32;
+        for (sample_id, _) in buffer.iter_samples().enumerate() {
+            // update Parameters with smoothing
+            self.params_snapshot.metric_duration = self.params.metric_dur_selector.smoothed.next();
+            self.params_snapshot.bar_pos = self.params.bar_position.smoothed.next();
+            self.params_snapshot.interpolate = self.params.interpolate_a_b.smoothed.next();
 
-            // reset progress when playback stops. // TODO maybe do this for every sample, not once per bufffer?
-            // TODO reset counter when self.was_playing=true and is_playing=false, only progress when is_playing...
-            self.maybe_reset_progress(context.transport().playing);
+            // Convert metric_duration when using bpm
+            if self.params_snapshot.use_bpm {
+                self.set_metric_duration_for_bpm(context.transport().tempo);
+            }
 
-            // handle all incoming events
-            while let Some(event) = context.next_event() {
-                // samples since last event
-                elapsed_samples = event.timing() - current_sample;
-                // update progress // TODO only when playing?
-                self.progress_in_samples += elapsed_samples as u64;
-                current_sample += elapsed_samples;
-
-                // get all parameters for this event
-                if elapsed_samples > 0 {
-                    self.update_velocity_parameters_smoothed_with_step(elapsed_samples);
-                    self.metric_duration = self.params.metric_dur_selector.smoothed.next_step(elapsed_samples);
-                    self.bar_pos = self.params.bar_position.smoothed.next_step(elapsed_samples);
-                    self.interpolate = self.params.interpolate_a_b.smoothed.next_step(elapsed_samples);
-                } else {
-                    self.update_velocity_parameters();
-                    self.metric_duration = self.params.metric_dur_selector.value();
-                    self.bar_pos = self.params.bar_position.value();
-                    self.interpolate = self.params.interpolate_a_b.value();
-                }
-
-                if self.params.use_bpm.value() {
-                    self.set_metric_duration_for_bpm(context.transport().tempo);
+            // loop through events at this time
+            while let Some(event) = next_event {
+                if event.timing() > sample_id as u32 {
+                    break;
                 }
 
                 match event {
                     NoteEvent::NoteOn { .. } => {
                         if let Some(event) = self.process_note_event(event) {
                             context.send_event(event);
-                            last_note_was_let_through = true;
-                        } else {
-                            last_note_was_let_through = false;
                         }
                     },
-                    NoteEvent::NoteOff { .. } => {
-                        if last_note_was_let_through {
-                            context.send_event(event)
-                        }
+                    // it's safest to just let all NoteOffs through, right?
+                    NoteEvent::NoteOff {..} => {
+                        context.send_event(event)
                     },
                     _ => context.send_event(event),
                 }
+
+                next_event = context.next_event();
             }
 
-            // update progress with samples left in buffer
-            elapsed_samples = buffer_len as u32 - current_sample;
-            self.progress_in_samples += elapsed_samples as u64;
-            // update all parameters once again
-            self.update_velocity_parameters_smoothed_with_step(elapsed_samples);
-            self.metric_duration = self.params.metric_dur_selector.smoothed.next_step(elapsed_samples);
-            self.bar_pos = self.params.bar_position.smoothed.next_step(elapsed_samples);
-            self.interpolate = self.params.interpolate_a_b.smoothed.next_step(elapsed_samples);
-        } else {
-            let output_one_pitch = self.params.midi_out_one_note.load(SeqCst);
-            let many_velocities = self.params.many_velocities.load(SeqCst);
-            self.interpolate_durs = self.params.interpolate_durations.load(SeqCst);
-            self.interpolate_indisp = self.params.interpolate_indisp.load(SeqCst);
-            // Since the metric duration might change while doing this, maybe it's easiest to just
-            // loop through all samples and individually check, whether we want to send a note.
-            for sample in 0..buffer_len {
-                // reset progress when not playing
-                self.maybe_reset_progress(context.transport().playing);
-
-                self.metric_duration = self.params.metric_dur_selector.smoothed.next_step(1);
-                self.bar_pos = self.params.bar_position.smoothed.next_step(1);
-                self.interpolate = self.params.interpolate_a_b.smoothed.next_step(1);
-                // TODO this can be done somewhere else and less often
-                self.update_velocity_parameters_smoothed_with_step(1);
-
-                if self.params.use_bpm.value() {
-                    self.set_metric_duration_for_bpm(context.transport().tempo);
-                }
-
+            // Send Midi
+            if self.params.send_midi.value() {
                 let (current_beat_idx, current_beat_duration_sum, indisp_val, let_through, origin) =
                     self.get_current_indisp_data();
 
                 let beat_first_sample: u64 =
                     (current_beat_duration_sum
-                        * self.metric_duration
+                        * self.params_snapshot.metric_duration
                         * self.sample_rate)
                         .floor() as u64;
 
                 let nth_sample_in_bar: u64 = (self.get_normalized_position_in_bar()
-                    * self.metric_duration
+                    * self.params_snapshot.metric_duration
                     * self.sample_rate)
                     .floor() as u64;
 
@@ -438,20 +365,20 @@ impl Plugin for MetreFiddler {
                         let vel = {
                             let tmp_vel = self.calculate_current_velocity(indisp_val);
 
-                            if self.interpolate_indisp {
+                            if self.params_snapshot.interpolate_indisp {
                                 tmp_vel
                             } else {
                                 match origin {
                                     Both => tmp_vel,
-                                    MetreA => dry_wet(tmp_vel, 0.0, self.interpolate),
-                                    MetreB => dry_wet(0.0, tmp_vel, self.interpolate),
+                                    MetreA => dry_wet(tmp_vel, 0.0, self.params_snapshot.interpolate),
+                                    MetreB => dry_wet(0.0, tmp_vel, self.params_snapshot.interpolate),
                                 }
                             }
                         };
                         let note = 60
-                            + if output_one_pitch {
+                            + if self.params_snapshot.output_one_pitch {
                             0
-                        } else if many_velocities {
+                        } else if self.params_snapshot.many_velocities {
                             indisp_val as u8
                         } else if self.is_accent(indisp_val) {
                             0
@@ -461,42 +388,48 @@ impl Plugin for MetreFiddler {
 
                         context.send_event(
                             NoteEvent::NoteOn {
-                                timing: sample as u32,
+                                timing: sample_id as u32,
                                 velocity: vel,
                                 channel: 0,
                                 note,
-                                voice_id: None
+                                voice_id: Some(sample_id as i32),
                             });
 
                         self.last_sent_beat_idx = current_beat_idx as i32;
 
                         // send a Note Off into self.note_off_buffer
-                        if let Some((n, delay)) = self.note_off_buffer.iter_mut().find(|&&mut (_, y)| y<0) {
-                            *delay = sample as i64 + (0.1 * self.sample_rate).floor() as i64;
-                            *n = note;
+                        let release_timing = sample_id as i64 + (0.1 * self.sample_rate).floor() as i64;
+                        if let Some(slot) = self.note_off_buffer.iter_mut().find(|e| e.is_none()) {
+                            *slot = Some((note, sample_id as i32, release_timing));
                         }
                     }
                 } else {
                     self.last_sent_beat_idx = -1
                 }
-                if context.transport().playing {
-                    self.progress_in_samples += 1;
-                }
             }
-            // Handle Note Offs
-            for (note, delay) in self.note_off_buffer.iter_mut() {
-                if *delay >= buffer_len as i64 {
-                    *delay -= buffer_len as i64
-                } else if *delay >= 0 {
+
+            // update progress
+            if context.transport().playing {
+                self.progress_in_samples += 1;
+            }
+        }
+
+        // Handle Note Offs
+        for event in self.note_off_buffer.iter_mut() {
+            if let Some((note, id, release_timing)) = event {
+                if *release_timing >= buffer_len as i64 {
+                    *release_timing -= buffer_len as i64;
+                } else {
                     context.send_event(
                         NoteEvent::NoteOff {
-                            timing: *delay as u32,
-                            voice_id: None,
+                            timing: *release_timing as u32,
+                            voice_id: Some(*id),
                             channel: 0,
                             note: *note,
                             velocity: 0.0,
                         });
-                    *delay = -1
+
+                    *event = None;
                 }
             }
         }
