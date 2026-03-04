@@ -79,8 +79,7 @@ impl MetreFiddler {
         self.params_snapshot.metric_duration *= one_crotchet as f32;
     }
 
-    // TODO this shouldn't be a method
-    fn is_accent(&self, indisp_value: usize) -> bool {
+    fn indisp_is_accent(&self, indisp_value: usize) -> bool {
         let skew = self.params_snapshot.vel_skew;
         let nr_beats = self.params.current_nr_of_beats.load(Acquire) as f32;
         let nr_of_accents = (skew * nr_beats).round() as usize;
@@ -97,7 +96,7 @@ impl MetreFiddler {
         let normalized_vel =
             if many_velocities {
                 (1.0 / (indisp_value + 1) as f32).powf(2.0*(1.0 - skew))
-            } else if self.is_accent(indisp_value) {
+            } else if self.indisp_is_accent(indisp_value) {
                 v_min
             } else {
                 v_max
@@ -142,7 +141,6 @@ impl MetreFiddler {
         let metric_data_b = metric_data.metre_b();
         let interpolation_data = metric_data.interpolation_data();
         let max_len = metric_data_a.durations.len().max(metric_data_b.durations.len());
-        let same_length: bool = metric_data_a.durations.len() == metric_data_b.durations.len();
 
         let current_beat_idx_a;
         let current_beat_idx_b;
@@ -193,8 +191,8 @@ impl MetreFiddler {
                 }
             };
 
-        // TODO is this a good method for round/ceil? needs more testing!
-        let indisp_val: usize = if same_length {
+        // Not yet sure whether this is the way to go but seems fine for now...
+        let indisp_val: usize = if metric_data_a.durations.len() == metric_data_b.durations.len() {
             indisp_val_temp.round() as usize
         } else {
             indisp_val_temp.ceil() as usize
@@ -378,7 +376,7 @@ impl Plugin for MetreFiddler {
                             0
                         } else if self.params_snapshot.many_velocities {
                             indisp_val as u8
-                        } else if self.is_accent(indisp_val) {
+                        } else if self.indisp_is_accent(indisp_val) {
                             0
                         } else {
                             1

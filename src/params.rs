@@ -166,15 +166,16 @@ impl Default for MetreFiddlerParams {
             midi_out_one_note: AtomicBool::from(false),
             
             interpolate_indisp: AtomicBool::from(true),
-            
-            // TODO new potential settings: Note Out Duration, Note out base pitch and channel
+
+            // TODO new potential settings: Note Out Duration (how would you input this duration? or just different options like 'short', 'fill_beat'...?),
+            // TODO         -"-             Note Out base pitch and channel (dropdown menus? :))
         }
     }
 }
 
 impl MetreFiddlerParams {
     /// Return all plain values of Parameters in a ParamsSnapShot,
-    /// Parameters that need smoothing will get that somewhere else. 
+    /// Parameters that need smoothing will get that somewhere else.
     pub fn snapshot(&self) -> ParamsSnapShot {
         ParamsSnapShot {
             vel_min: self.velocity_min.value(),
