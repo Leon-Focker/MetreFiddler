@@ -24,8 +24,6 @@ struct MetreFiddler {
     was_playing: bool,
 }
 
-// TODO check concurrency of current_nr_beats
-
 impl Default for MetreFiddler {
     fn default() -> Self {
         let default_params = Arc::new(MetreFiddlerParams::default());
