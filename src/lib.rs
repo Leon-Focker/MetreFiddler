@@ -1,6 +1,6 @@
 use nih_plug::prelude::*;
 use std::sync::{Arc};
-use std::sync::atomic::Ordering::{Relaxed, SeqCst};
+use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use crate::metre::beat_origin::BeatOrigin;
 use crate::metre::beat_origin::BeatOrigin::*;
 use crate::params::{MetreFiddlerParams, ParamsSnapShot};
@@ -84,7 +84,7 @@ impl MetreFiddler {
     // TODO this shouldn't be a method
     fn is_accent(&self, indisp_value: usize) -> bool {
         let skew = self.params_snapshot.vel_skew;
-        let nr_beats = self.params.current_nr_of_beats.load(Relaxed) as f32;
+        let nr_beats = self.params.current_nr_of_beats.load(Acquire) as f32;
         let nr_of_accents = (skew * nr_beats).round() as usize;
         indisp_value >= nr_of_accents
     }
@@ -163,7 +163,7 @@ impl MetreFiddler {
             current_beat_idx = idx;
             current_beat_duration_sum = sum;
             current_beat_origin = Both;
-            self.params.current_nr_of_beats.store(total_nr_beats, SeqCst);
+            self.params.current_nr_of_beats.store(total_nr_beats, Release);
         } else {
             let durations = metric_data.get_interleaved_durations(self.params_snapshot.interpolate);
             let (idx, sum, total_nr_beats) = self.get_beat_idx_from_durations(durations);
@@ -177,7 +177,7 @@ impl MetreFiddler {
                 x if x >= 1.0 => MetreB,
                 _ => interpolation_data.unique_start_time_origins()[idx],
             };
-            self.params.current_nr_of_beats.store(total_nr_beats, SeqCst);
+            self.params.current_nr_of_beats.store(total_nr_beats, Release);
         }
 
         let indisp_val_temp: f32 =
@@ -303,7 +303,7 @@ impl Plugin for MetreFiddler {
                 self.progress_in_samples = 0;
             }
             // message to gui
-            self.params.reset_info.store(false, SeqCst)
+            self.params.reset_info.store(false, Release)
         }
         self.last_reset_phase_value = self.params.reset_phase.value();
 

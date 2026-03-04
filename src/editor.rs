@@ -5,7 +5,7 @@ use vizia_plug::widgets::*;
 use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
 use vizia_plug::vizia::icons::ICON_SETTINGS;
 use std::sync::{Arc};
-use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use atomic_float::AtomicF32;
 use nih_plug::{nih_log};
 use crate::{MetreFiddlerParams};
@@ -136,9 +136,9 @@ impl Model for Data {
                         self.interpolation_data_snapshot = metric_data.interpolation_data().clone();
                         self.last_input_is_valid = true;
                         if self.settings.interpolate_durations {
-                            self.params.current_nr_of_beats.store(metric_data.get_interpolated_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
+                            self.params.current_nr_of_beats.store(metric_data.get_interpolated_durations(self.params.interpolate_a_b.value()).count(), Release);
                         } else {
-                            self.params.current_nr_of_beats.store(metric_data.get_interleaved_durations(self.params.interpolate_a_b.value()).count(), SeqCst);
+                            self.params.current_nr_of_beats.store(metric_data.get_interleaved_durations(self.params.interpolate_a_b.value()).count(), Release);
                         }
                     },
                     Err(err_string) => {
@@ -151,26 +151,26 @@ impl Model for Data {
                 self.screen = *screen;
             }
             ToggleInterpolateDurs => {
-                self.params.interpolate_durations.store(!self.params.interpolate_durations.load(SeqCst), SeqCst);
+                self.params.interpolate_durations.store(!self.params.interpolate_durations.load(Relaxed), Relaxed);
                 self.settings.interpolate_durations = !self.settings.interpolate_durations;
             }
             ToggleInterpolateIndisp => {
-                self.params.interpolate_indisp.store(!self.params.interpolate_indisp.load(SeqCst), SeqCst);
+                self.params.interpolate_indisp.store(!self.params.interpolate_indisp.load(Relaxed), Relaxed);
                 self.settings.interpolate_indisp = !self.settings.interpolate_indisp;
             }
             ToggleManyVelocities => {
-                self.params.many_velocities.store(!self.params.many_velocities.load(SeqCst), SeqCst);
+                self.params.many_velocities.store(!self.params.many_velocities.load(Relaxed), Relaxed);
                 self.settings.many_velocities = !self.settings.many_velocities;
             }
             ToggleMidiOutput => {
-                self.params.midi_out_one_note.store(!self.params.midi_out_one_note.load(SeqCst), SeqCst);
+                self.params.midi_out_one_note.store(!self.params.midi_out_one_note.load(Relaxed), Relaxed);
                 self.settings.midi_out_one_note = !self.settings.midi_out_one_note;
             }
             ToggleAB => {
                 self.display_b = !self.display_b;
             }
             TriggerPhaseReset => {
-                self.params.reset_info.store(true, SeqCst);
+                self.params.reset_info.store(true, Release);
                 self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle;
                 
                 let param_ref = &self.params.reset_phase;
@@ -187,7 +187,7 @@ impl Model for Data {
                 cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
             }
             ToggleCheckForPhaseReset => {
-                if !self.params.reset_info.load(SeqCst) {
+                if !self.params.reset_info.load(Acquire) {
                     cx.emit(RevertPhaseReset);
                 } else {
                     self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle; 
@@ -218,10 +218,10 @@ pub(crate) fn create(
 
         let metric_data = params.combined_metre_data.lock().unwrap();
         let settings = Settings {
-            interpolate_durations: params.interpolate_durations.load(SeqCst),
-            interpolate_indisp: params.interpolate_indisp.load(SeqCst),
-            many_velocities: params.many_velocities.load(SeqCst),
-            midi_out_one_note: params.midi_out_one_note.load(SeqCst),
+            interpolate_durations: params.interpolate_durations.load(Relaxed),
+            interpolate_indisp: params.interpolate_indisp.load(Relaxed),
+            many_velocities: params.many_velocities.load(Relaxed),
+            midi_out_one_note: params.midi_out_one_note.load(Relaxed),
         };
         
         Data {
@@ -335,7 +335,7 @@ fn upper_part(cx: &mut Context) {
                                 Binding::new(cx, Data::text_input_b, |cx, _| {
                                     ParamBinding::new(cx, Data::params, |params| &params.interpolate_a_b,
                                                       |cx, _| {
-                                                          let nr_beats = Data::params.get(cx).current_nr_of_beats.load(SeqCst) as f32;
+                                                          let nr_beats = Data::params.get(cx).current_nr_of_beats.load(Acquire) as f32;
                                                           ParamLabel::new(cx, Data::params, |params| &params.velocity_skew,
                                                                           move |skew| {
                                                                               ((skew * nr_beats).round() as usize).to_string()
@@ -536,7 +536,7 @@ fn duration_position(cx: &mut Context) {
                             ParamDisplayKnob::new(
                                 cx,
                                 Data::displayed_position
-                                    .map(|position| position.load(SeqCst)))
+                                    .map(|position| position.load(Relaxed)))
                                 .height(Pixels(20.0))
                                 .width(Pixels(200.0));
                         } else {
@@ -716,7 +716,7 @@ fn settings_window(cx: &mut Context) {
                 settings_button(cx, settings.get(cx).interpolate_durations, "Interpolate Durations".to_string(), ToggleInterpolateDurs);
                 settings_button(cx, settings.get(cx).interpolate_indisp, "Interpolate Indispensability Values".to_string(), ToggleInterpolateIndisp);
                 settings_button(cx, !settings.get(cx).many_velocities, "Accents instead of unique velocities".to_string(), ToggleManyVelocities);
-                settings_button(cx, !settings.get(cx).midi_out_one_note, "Output many pitches".to_string(), ToggleMidiOutput);
+                settings_button(cx, !settings.get(cx).midi_out_one_note, "Output many pitches (only when sending Midi)".to_string(), ToggleMidiOutput);
             });
         })
     })
