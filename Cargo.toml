@@ -1,11 +1,11 @@
 [package]
 name = "metrefiddler"
-version = "1.0.0"
+version = "1.4.0"
 edition = "2021"
 authors = ["Leon Focker <contact@leonfocker.de>"]
 license = "GPL-3.0-or-later"
 homepage = "https://youtu.be/dQw4w9WgXcQ"
-description = "a rhythmic midi generator"
+description = "Midi Processing base on metric structures."
 
 [workspace]
 members = ["xtask", "."]
