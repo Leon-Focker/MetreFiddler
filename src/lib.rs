@@ -15,9 +15,10 @@ mod params;
 struct MetreFiddler {
     params: Arc<MetreFiddlerParams>,
     params_snapshot: ParamsSnapShot,
-
     sample_rate: f32,
-    progress_in_samples: u64, // TODO maybe this should be reset after each full measure??
+    progress_in_samples: u64,
+    metric_duration_samples: u64,
+
     last_reset_phase_value: bool,
     last_sent_beat_idx: i32,
     note_off_buffer: Vec<Option<(u8, i32, i64)>>,
@@ -31,22 +32,23 @@ impl Default for MetreFiddler {
             params: default_params.clone(),
             params_snapshot: ParamsSnapShot::default(),
             sample_rate: 1.0,
+            progress_in_samples: 0,
+            metric_duration_samples: 1,
             last_reset_phase_value: false,
             last_sent_beat_idx: -1,
             note_off_buffer: vec![None; 8],
             was_playing: false,
-            progress_in_samples: 0,
         }
     }
 }
 
 impl MetreFiddler {
 
-    fn maybe_reset_progress(&mut self, is_playing: bool) {
+    fn hande_playback_start_stop(&mut self, is_playing: bool) {
         if !is_playing && self.was_playing {
-            self.progress_in_samples = 0;
             self.was_playing = false;
         } else if is_playing && !self.was_playing {
+            self.progress_in_samples = 0;
             self.was_playing = true;
             self.last_sent_beat_idx = -1;
         }
@@ -60,14 +62,11 @@ impl MetreFiddler {
     // Get the normalized time within a measure (between 0.0 and 1.0) depending on the current
     // progress_in_samples or the bar_pos.
     fn get_normalized_position_in_bar(&self) -> f32 {
-        // Calculate the current time in seconds from the current progress_in_samples
-        let time = self.progress_in_samples as f32 / self.sample_rate;
         // Get the normalized time within a measure (between 0.0 and 1.0)
         if self.params.use_position.value() {
             self.params_snapshot.bar_pos
         } else {
-            let duration = self.params_snapshot.metric_duration;
-            let pos = time.rem_euclid(duration) / duration;
+            let pos = (self.progress_in_samples % self.metric_duration_samples) as f32 / self.metric_duration_samples as f32;
             self.params.displayed_position.store(pos, Relaxed);
             pos
         }
@@ -287,8 +286,8 @@ impl Plugin for MetreFiddler {
         // Get all plain parameter values once here
         self.params_snapshot = self.params.snapshot();
 
-        // reset progress when playback stops. // TODO rethink while reworking how progress works
-        self.maybe_reset_progress(context.transport().playing);
+        // reset progress when playback stops and more
+        self.hande_playback_start_stop(context.transport().playing);
 
         // TODO this is still dodgy and only happens once per buffer
         // Handle the reset_phase button:
@@ -305,14 +304,14 @@ impl Plugin for MetreFiddler {
 
         for (sample_id, _) in buffer.iter_samples().enumerate() {
             // update Parameters with smoothing
-            self.params_snapshot.metric_duration = self.params.metric_dur_selector.smoothed.next();
             self.params_snapshot.bar_pos = self.params.bar_position.smoothed.next();
             self.params_snapshot.interpolate = self.params.interpolate_a_b.smoothed.next();
-
+            self.params_snapshot.metric_duration = self.params.metric_dur_selector.smoothed.next();
             // Convert metric_duration when using bpm
             if self.params_snapshot.use_bpm {
                 self.set_metric_duration_for_bpm(context.transport().tempo);
             }
+            self.metric_duration_samples = (self.params_snapshot.metric_duration * self.sample_rate).round() as u64;
 
             // loop through events at this time
             while let Some(event) = next_event {
@@ -342,14 +341,11 @@ impl Plugin for MetreFiddler {
                     self.get_current_indisp_data();
 
                 let beat_first_sample: u64 =
-                    (current_beat_duration_sum
-                        * self.params_snapshot.metric_duration
-                        * self.sample_rate)
+                    (current_beat_duration_sum * self.metric_duration_samples as f32)
                         .floor() as u64;
 
-                let nth_sample_in_bar: u64 = (self.get_normalized_position_in_bar()
-                    * self.params_snapshot.metric_duration
-                    * self.sample_rate)
+                let nth_sample_in_bar: u64 =
+                    (self.get_normalized_position_in_bar()  * self.metric_duration_samples as f32)
                     .floor() as u64;
 
                 let nth_sample_of_beat: u64 = nth_sample_in_bar.saturating_sub(beat_first_sample);
@@ -407,6 +403,9 @@ impl Plugin for MetreFiddler {
             // update progress
             if context.transport().playing {
                 self.progress_in_samples += 1;
+                if self.progress_in_samples >= self.metric_duration_samples {
+                    self.progress_in_samples -= self.metric_duration_samples;
+                }
             }
         }
 

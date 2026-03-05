@@ -84,7 +84,7 @@ fn fundamental_indispensability(len: usize) -> Vec<usize> {
 
 fn next_set_index(result: &[isize], mut idx: usize, len: usize) -> usize {
     loop {
-        idx = (idx + 1).rem_euclid(len);
+        idx = (idx + 1) % len;
         if result[idx] >= 0 { return idx; }
     }
 }
