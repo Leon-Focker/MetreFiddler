@@ -8,6 +8,7 @@ use std::sync::{Arc};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use atomic_float::AtomicF32;
 use nih_plug::{nih_log};
+use serde::de::Unexpected::Str;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::*;
 use crate::gui::metre_input::{MetreAorB, MetreInput};
@@ -72,6 +73,7 @@ pub(crate) struct Settings {
     pub(crate) interpolate_indisp: bool,
     pub(crate) many_velocities: bool,
     pub(crate) midi_out_one_note: bool,
+    pub(crate) retain_metric_phase: bool,
 }
 
 impl vizia_plug::vizia::prelude::Data for Settings {
@@ -101,6 +103,7 @@ pub(crate) enum MetreFiddlerEvent {
     ToggleInterpolateIndisp,
     ToggleManyVelocities,
     ToggleMidiOutput,
+    ToggleRetainPhase,
     TriggerPhaseReset,
     RevertPhaseReset,
     ToggleCheckForPhaseReset,
@@ -166,6 +169,10 @@ impl Model for Data {
                 self.params.midi_out_one_note.store(!self.params.midi_out_one_note.load(Relaxed), Relaxed);
                 self.settings.midi_out_one_note = !self.settings.midi_out_one_note;
             }
+            ToggleRetainPhase => {
+                self.params.retain_metric_phase.store(!self.params.retain_metric_phase.load(Relaxed), Relaxed);
+                self.settings.retain_metric_phase = !self.settings.retain_metric_phase;
+            }
             ToggleAB => {
                 self.display_b = !self.display_b;
             }
@@ -222,6 +229,7 @@ pub(crate) fn create(
             interpolate_indisp: params.interpolate_indisp.load(Relaxed),
             many_velocities: params.many_velocities.load(Relaxed),
             midi_out_one_note: params.midi_out_one_note.load(Relaxed),
+            retain_metric_phase: params.retain_metric_phase.load(Relaxed),
         };
         
         Data {
@@ -707,16 +715,21 @@ fn settings_window(cx: &mut Context) {
         .font_size(40.0)
         .height(Pixels(50.0));
 
-    Element::new(cx).height(Pixels(25.0));
+    Element::new(cx).height(Pixels(5.0));
 
     // Settings
     ScrollView::new(cx, |cx| {
         Binding::new(cx, Data::settings, |cx, settings| {
             VStack::new(cx, |cx| {
                 settings_button(cx, settings.get(cx).interpolate_durations, "Interpolate Durations".to_string(), ToggleInterpolateDurs);
+                settings_divider(cx);
                 settings_button(cx, settings.get(cx).interpolate_indisp, "Interpolate Indispensability Values".to_string(), ToggleInterpolateIndisp);
-                settings_button(cx, !settings.get(cx).many_velocities, "Accents instead of unique velocities".to_string(), ToggleManyVelocities);
-                settings_button(cx, !settings.get(cx).midi_out_one_note, "Output many pitches (only when sending Midi)".to_string(), ToggleMidiOutput);
+                settings_divider(cx);
+                settings_button(cx, !settings.get(cx).many_velocities, "Accent-Mode: Only two distinct Velocities".to_string(), ToggleManyVelocities);
+                settings_divider(cx);
+                settings_button(cx, !settings.get(cx).midi_out_one_note, "Send different Pitches According to Indispensability".to_string(), ToggleMidiOutput);
+                settings_divider(cx);
+                settings_button(cx, settings.get(cx).retain_metric_phase, "Retain Metric Phase when changing \nMetric Duration during Playback".to_string(), ToggleRetainPhase);
             });
         })
     })
@@ -757,4 +770,13 @@ fn settings_button(cx: &mut Context, is_on: bool, label: String, event: MetreFid
         Label::new(cx, label);
     })
         .alignment(Alignment::Left);
+}
+
+fn settings_divider(cx: &mut Context) {
+    HStack::new(cx, |cx| {
+        Element::new(cx).width(Pixels(150.0));
+        Element::new(cx).width(Pixels(150.0)).background_color(Color::lightgray()).height(Pixels(1.0));
+    })
+        .alignment(Alignment::Left)
+        .height(Pixels(1.0));
 }

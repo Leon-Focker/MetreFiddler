@@ -301,7 +301,14 @@ impl Plugin for MetreFiddler {
             let metric_duration = self.params.metric_dur_selector.smoothed.next();
             self.params_snapshot.bar_pos = self.params.bar_position.smoothed.next();
             self.params_snapshot.interpolate = self.params.interpolate_a_b.smoothed.next();
-            self.metric_phase.set_metric_duration(metric_duration, self.sample_rate, self.params_snapshot.use_bpm, context.transport().tempo, true);
+            self.metric_phase
+                .set_metric_duration(
+                    metric_duration,
+                    self.sample_rate,
+                    self.params_snapshot.use_bpm,
+                    context.transport().tempo,
+                    self.params.retain_metric_phase.load(Relaxed)
+                );
 
             // loop through events at this time
             while let Some(event) = next_event {

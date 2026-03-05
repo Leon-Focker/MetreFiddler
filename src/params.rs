@@ -71,6 +71,9 @@ pub struct MetreFiddlerParams {
     
     #[persist = "interpolate_indisp"]
     pub interpolate_indisp: AtomicBool,
+
+    #[persist = "retain_metric_phase"]
+    pub retain_metric_phase: AtomicBool,
 }
 
 impl Default for MetreFiddlerParams {
@@ -166,6 +169,8 @@ impl Default for MetreFiddlerParams {
             midi_out_one_note: AtomicBool::from(false),
             
             interpolate_indisp: AtomicBool::from(true),
+
+            retain_metric_phase: AtomicBool::from(true),
 
             // TODO new potential settings: Note Out Duration (how would you input this duration? or just different options like 'short', 'fill_beat'...?),
             // TODO         -"-             Note Out base pitch and channel (dropdown menus? :))
