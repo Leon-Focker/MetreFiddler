@@ -3,6 +3,7 @@ use std::sync::{Arc};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use crate::metre::beat_origin::BeatOrigin;
 use crate::metre::beat_origin::BeatOrigin::*;
+use crate::metre::metric_phase::MetricPhase;
 use crate::params::{MetreFiddlerParams, ParamsSnapShot};
 use crate::util::{dry_wet, rescale};
 
@@ -12,12 +13,12 @@ mod gui;
 mod util;
 mod params;
 
+
 struct MetreFiddler {
     params: Arc<MetreFiddlerParams>,
     params_snapshot: ParamsSnapShot,
     sample_rate: f32,
-    progress_in_samples: u64,
-    metric_duration_samples: u64,
+    metric_phase: MetricPhase,
 
     last_reset_phase_value: bool,
     last_sent_beat_idx: i32,
@@ -32,8 +33,7 @@ impl Default for MetreFiddler {
             params: default_params.clone(),
             params_snapshot: ParamsSnapShot::default(),
             sample_rate: 1.0,
-            progress_in_samples: 0,
-            metric_duration_samples: 1,
+            metric_phase: MetricPhase::default(),
             last_reset_phase_value: false,
             last_sent_beat_idx: -1,
             note_off_buffer: vec![None; 8],
@@ -48,7 +48,7 @@ impl MetreFiddler {
         if !is_playing && self.was_playing {
             self.was_playing = false;
         } else if is_playing && !self.was_playing {
-            self.progress_in_samples = 0;
+            self.metric_phase.reset();
             self.was_playing = true;
             self.last_sent_beat_idx = -1;
         }
@@ -66,16 +66,10 @@ impl MetreFiddler {
         if self.params.use_position.value() {
             self.params_snapshot.bar_pos
         } else {
-            let pos = (self.progress_in_samples % self.metric_duration_samples) as f32 / self.metric_duration_samples as f32;
+            let pos = self.metric_phase.metric_phase();
             self.params.displayed_position.store(pos, Relaxed);
             pos
         }
-    }
-
-    // set metric_duration to length of a quarter note times the slider
-    fn set_metric_duration_for_bpm(&mut self, tempo: Option<f64>) {
-        let one_crotchet = 60.0 / tempo.unwrap_or(60.0);
-        self.params_snapshot.metric_duration *= one_crotchet as f32;
     }
 
     fn indisp_is_accent(&self, indisp_value: usize) -> bool {
@@ -286,7 +280,7 @@ impl Plugin for MetreFiddler {
         // Get all plain parameter values once here
         self.params_snapshot = self.params.snapshot();
 
-        // reset progress when playback stops and more
+        // reset metric phase when playback stops and more
         self.hande_playback_start_stop(context.transport().playing);
 
         // TODO this is still dodgy and only happens once per buffer
@@ -295,7 +289,7 @@ impl Plugin for MetreFiddler {
         if self.params.reset_phase.value() {
             if ! self.last_reset_phase_value {
                 // resetting the progress_in_samples counter:
-                self.progress_in_samples = 0;
+                self.metric_phase.reset()
             }
             // message to gui
             self.params.reset_info.store(false, Release)
@@ -304,14 +298,10 @@ impl Plugin for MetreFiddler {
 
         for (sample_id, _) in buffer.iter_samples().enumerate() {
             // update Parameters with smoothing
+            let metric_duration = self.params.metric_dur_selector.smoothed.next();
             self.params_snapshot.bar_pos = self.params.bar_position.smoothed.next();
             self.params_snapshot.interpolate = self.params.interpolate_a_b.smoothed.next();
-            self.params_snapshot.metric_duration = self.params.metric_dur_selector.smoothed.next();
-            // Convert metric_duration when using bpm
-            if self.params_snapshot.use_bpm {
-                self.set_metric_duration_for_bpm(context.transport().tempo);
-            }
-            self.metric_duration_samples = (self.params_snapshot.metric_duration * self.sample_rate).round() as u64;
+            self.metric_phase.set_metric_duration(metric_duration, self.sample_rate, self.params_snapshot.use_bpm, context.transport().tempo, true);
 
             // loop through events at this time
             while let Some(event) = next_event {
@@ -341,11 +331,11 @@ impl Plugin for MetreFiddler {
                     self.get_current_indisp_data();
 
                 let beat_first_sample: u64 =
-                    (current_beat_duration_sum * self.metric_duration_samples as f32)
+                    (current_beat_duration_sum * self.metric_phase.metric_duration_samples() as f32)
                         .floor() as u64;
 
                 let nth_sample_in_bar: u64 =
-                    (self.get_normalized_position_in_bar()  * self.metric_duration_samples as f32)
+                    (self.get_normalized_position_in_bar() * self.metric_phase.metric_duration_samples() as f32)
                     .floor() as u64;
 
                 let nth_sample_of_beat: u64 = nth_sample_in_bar.saturating_sub(beat_first_sample);
@@ -402,10 +392,7 @@ impl Plugin for MetreFiddler {
 
             // update progress
             if context.transport().playing {
-                self.progress_in_samples += 1;
-                if self.progress_in_samples >= self.metric_duration_samples {
-                    self.progress_in_samples -= self.metric_duration_samples;
-                }
+                self.metric_phase.increment();
             }
         }
 
