@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
-use vizia_plug::vizia::prelude::Data;
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, Data, PartialEq)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BeatOrigin {
     MetreA,
     MetreB,

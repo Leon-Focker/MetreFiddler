@@ -1,9 +1,10 @@
-// This is a modified copy of nih-plugs param_slider.rs
-// ! A slider that integrates with NIH-plug's [`Param`] types.
-use nih_plug::prelude::Param;
+use nice_plug::params::Param;
+use nice_plug::prelude::ParamPtr;
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::param_base::ParamWidgetBase;
 use vizia_plug::widgets::util::{self, ModifiersExt};
+// This is a modified copy of nih-plugs param_slider.rs
+// ! A slider that integrates with NIH-plug's [`Param`] types.
 
 
 /// When shift+dragging a parameter, one pixel dragged corresponds to this much change in the
@@ -12,36 +13,34 @@ const GRANULAR_DRAG_MULTIPLIER: f32 = 0.1;
 
 /// A slider that integrates with NIH-plug's [`Param`] types. Use the
 /// [`set_style()`][ParamSliderExt::set_style()] method to change how the value gets displayed.
-#[derive(Lens)]
 pub struct ParamSliderV {
     param_base: ParamWidgetBase,
 
-    /// Will be set to `true` when the field gets Alt+Click'ed which will replace the label with a
-    /// text box.
-    text_input_active: bool,
-    /// Will be set to `true` if we're dragging the parameter. Resetting the parameter or entering a
+    /// Set to `true` when the field gets Alt+Click'ed — replaces the label with a text box.
+    text_input_active: SyncSignal<bool>,
+    /// What style to use for the slider.
+    style: SyncSignal<ParamSliderStyle>,
+    /// A specific label to use instead of displaying the parameter's value.
+    label_override: SyncSignal<Option<String>>,
+
+    /// Set to `true` while we're dragging the parameter. Resetting the parameter or entering a
     /// text value should not initiate a drag.
     drag_active: bool,
-    /// We keep track of the start coordinate and normalized value when holding down Shift while
-    /// dragging for higher precision dragging. This is a `None` value when granular dragging is not
-    /// active.
+    /// Start coordinate and normalized value when holding down Shift while dragging for higher
+    /// precision dragging. `None` when granular dragging is not active.
     granular_drag_status: Option<GranularDragStatus>,
 
     // These fields are set through modifiers:
-    /// Whether or not to listen to scroll events for changing the parameter's value in steps.
+    /// Whether to listen to scroll events for changing the parameter's value in steps.
     use_scroll_wheel: bool,
-    /// The number of (fractional) scrolled lines that have not yet been turned into parameter
-    /// change events. This is needed to support trackpads with smooth scrolling.
+    /// Fractional scrolled lines not yet turned into parameter change events. Needed for
+    /// trackpads with smooth scrolling.
     scrolled_lines: f32,
-    /// What style to use for the slider.
-    style: ParamSliderStyle,
-    /// A specific label to use instead of displaying the parameter's value.
-    label_override: Option<String>,
 }
 
 /// How the [`ParamSliderV`] should display its values. Set this using
 /// [`ParamSliderExt::set_style()`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Data)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum ParamSliderStyle {
     /// Visualize the offset from the default value for continuous parameters with a default value
@@ -82,110 +81,90 @@ pub struct GranularDragStatus {
 }
 
 impl ParamSliderV {
-    /// Creates a new [`ParamSliderV`] for the given parameter. To accommodate VIZIA's mapping system,
-    /// you'll need to provide a lens containing your `Params` implementation object (check out how
-    /// the `Data` struct is used in `gain_gui_vizia`) and a projection function that maps the
-    /// `Params` object to the parameter you want to display a widget for. Parameter changes are
-    /// handled by emitting [`ParamEvent`][super::ParamEvent]s which are automatically handled by
-    /// the VIZIA wrapper.
-    ///
-    /// See [`ParamSliderExt`] for additional options.
-    pub fn new<L, Params, P, FMap>(
-        cx: &mut Context,
-        params: L,
-        params_to_param: FMap,
-    ) -> Handle<'_, Self>
+    /// Creates a new [`ParamSliderV`] for the given parameter. Pass a reference to the
+    /// parameter directly — e.g. `ParamSliderV::new(cx, &params.my_toggle)`.
+    pub fn new<'c, 'p, P>(cx: &'c mut Context, param: &'p P) -> Handle<'c, Self>
     where
-        L: Lens<Target = Params> + Clone,
-        Params: 'static,
+        'p: 'c,
         P: Param + 'static,
-        FMap: Fn(&Params) -> &P + Copy + 'static,
     {
-        // We'll visualize the difference between the current value and the default value if the
-        // default value lies somewhere in the middle and the parameter is continuous. Otherwise
-        // this approach looks a bit jarring.
-        Self {
-            param_base: ParamWidgetBase::new(cx, params, params_to_param),
+        let param_base = ParamWidgetBase::new(cx, param);
+        let text_input_active = SyncSignal::new(false);
+        let style = SyncSignal::new(ParamSliderStyle::Centered);
+        let label_override: SyncSignal<Option<String>> = SyncSignal::new(None);
 
-            text_input_active: false,
+        let unmodulated_signal = param_base.unmodulated_signal(cx);
+        let modulated_signal = param_base.modulated_signal(cx);
+
+        Self {
+            param_base,
+            text_input_active,
+            style,
+            label_override,
             drag_active: false,
             granular_drag_status: None,
-
             use_scroll_wheel: true,
             scrolled_lines: 0.0,
-            style: ParamSliderStyle::Centered,
-            label_override: None,
         }
             .build(
                 cx,
-                ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
-                    Binding::new(cx, ParamSliderV::style, move |cx, style| {
-                        let style = style.get(cx);
+                ParamWidgetBase::build_view(param, move |cx, param_data| {
+                    Binding::new(cx, style, move |cx| {
+                        let style = style.get();
+                        let param_ptr = param_base.param_ptr();
 
-                        // Can't use `.to_string()` here as that would include the modulation.
-                        let unmodulated_normalized_value_lens =
-                            param_data.make_lens(|param| param.unmodulated_normalized_value());
-                        let display_value_lens = param_data.make_lens(|param| {
-                            param.normalized_value_to_string(param.unmodulated_normalized_value(), true)
+                        // Derived display string. Single reactive input: the unmodulated value.
+                        // SAFETY for the `ParamPtr` read: resolved from a valid `&impl Param` at
+                        // widget construction; the pointer stays valid for the plugin's lifetime.
+                        let display_value: Memo<String> = Memo::new(move |_| {
+                            let current = unmodulated_signal.get();
+                            unsafe { param_ptr.normalized_value_to_string(current, true) }
                         });
 
-                        // The resulting tuple `(start_t, delta)` corresponds to the start and the
-                        // signed width of the bar. `start_t` is in `[0, 1]`, and `delta` is in
-                        // `[-1, 1]`.
-                        let fill_start_delta_lens =
-                            unmodulated_normalized_value_lens.map(move |current_value| {
-                                Self::compute_fill_start_delta(
-                                    style,
-                                    param_data.param(),
-                                    *current_value,
-                                )
-                            });
-
-                        // If the parameter is being modulated by the host (this only works for CLAP
-                        // plugins with hosts that support this), then this is the difference
-                        // between the 'true' value and the current value after modulation has been
-                        // applied. This follows the same format as `fill_start_delta_lens`.
-                        let modulation_start_delta_lens = param_data.make_lens(move |param| {
-                            Self::compute_modulation_fill_start_delta(style, param)
+                        // `(start_t, delta)` for the filled portion of the bar. `start_t ∈ [0, 1]`,
+                        // `delta ∈ [-1, 1]`. Reactive input: the unmodulated value. The helper also
+                        // reads static parameter metadata (default value, step count, step
+                        // distribution) via the `ParamPtr`; those are invariant for the plugin's
+                        // lifetime so they don't need to be tracked as reactive dependencies.
+                        let fill_start_delta: Memo<(f32, f32)> = Memo::new(move |_| {
+                            let current = unmodulated_signal.get();
+                            Self::compute_fill_start_delta(style, param_ptr, current)
                         });
 
-                        // This is used to draw labels for `CurrentStepLabeled`
-                        let make_preview_value_lens = move |normalized_value| {
-                            param_data.make_lens(move |param| {
-                                param.normalized_value_to_string(normalized_value, true)
-                            })
-                        };
+                        // Modulation offset bar. Reactive inputs: both unmodulated and modulated
+                        // values — if either moves, the delta must be recomputed. Reading both
+                        // via `.get()` inside the memo closure subscribes to both signals.
+                        let modulation_start_delta: Memo<(f32, f32)> = Memo::new(move |_| {
+                            let unmod = unmodulated_signal.get();
+                            let modulated = modulated_signal.get();
+                            Self::compute_modulation_fill_start_delta(style, unmod, modulated)
+                        });
 
                         // Only draw the text input widget when it gets focussed. Otherwise, overlay the
                         // label with the slider. Creating the textbox based on
                         // `ParamSliderInternal::text_input_active` lets us focus the textbox when it gets
                         // created.
-                        Binding::new(
-                            cx,
-                            ParamSliderV::text_input_active,
-                            move |cx, text_input_active| {
-                                if text_input_active.get(cx) {
-                                    Self::text_input_view(cx, display_value_lens);
-                                } else {
-                                    ZStack::new(cx, |cx| {
-                                        Self::slider_fill_view(
-                                            cx,
-                                            fill_start_delta_lens,
-                                            modulation_start_delta_lens,
-                                        );
-                                        Self::slider_label_view(
-                                            cx,
-                                            param_data.param(),
-                                            style,
-                                            display_value_lens,
-                                            make_preview_value_lens,
-                                            ParamSliderV::label_override,
-                                        );
-                                    })
-                                        .hoverable(false);
-                                }
-                            },
-                        );
+                        Binding::new(cx, text_input_active, move |cx| {
+                            if text_input_active.get() {
+                                Self::text_input_view(cx, display_value);
+                            } else {
+                                ZStack::new(cx, |cx| {
+                                    Self::slider_fill_view(
+                                        cx,
+                                        fill_start_delta,
+                                        modulation_start_delta,
+                                    );
+                                    Self::slider_label_view(
+                                        cx,
+                                        param_base,
+                                        style,
+                                        display_value,
+                                        label_override,
+                                    );
+                                })
+                                    .hoverable(false);
+                            }
+                        });
                     });
                 }),
             )
@@ -195,8 +174,8 @@ impl ParamSliderV {
     }
 
     /// Create a text input that's shown in place of the slider.
-    fn text_input_view(cx: &mut Context, display_value_lens: impl Lens<Target = String>) {
-        Textbox::new(cx, display_value_lens)
+    fn text_input_view(cx: &mut Context, display_value: Memo<String>) {
+        Textbox::new(cx, display_value)
             .class("value-entry")
             .on_submit(|cx, string, success| {
                 if success {
@@ -222,8 +201,8 @@ impl ParamSliderV {
     /// Create the fill part of the slider.
     fn slider_fill_view(
         cx: &mut Context,
-        fill_start_delta_lens: impl Lens<Target = (f32, f32)>,
-        modulation_start_delta_lens: impl Lens<Target = (f32, f32)>,
+        fill_start_delta: Memo<(f32, f32)>,
+        modulation_start_delta: Memo<(f32, f32)>,
     ) {
         // The filled bar portion. This can be visualized in a couple different ways depending on
         // the current style property. See [`ParamSliderStyle`].
@@ -232,9 +211,9 @@ impl ParamSliderV {
             .background_color(RGBA::rgb(196, 196, 196))
             .width(Stretch(1.0))
             // TODO slider starts from bottom, not top:
-            .top(fill_start_delta_lens.map(|(_start_t, delta)| Percentage((1.0 - delta) * 100.0)))
+            .top(fill_start_delta.map(|(_start_t, delta)| Percentage((1.0 - delta) * 100.0)))
             //.top(fill_start_delta_lens.map(|(start_t, _)| Percentage(start_t* 100.0)))
-            .height(fill_start_delta_lens.map(|(_, delta)| Percentage(delta * 100.0)))
+            .height(fill_start_delta.map(|(_, delta)| Percentage(delta * 100.0)))
             // Hovering is handled on the param slider as a whole, this
             // should not affect that
             .hoverable(false);
@@ -247,11 +226,11 @@ impl ParamSliderV {
             .class("fill")
             .class("fill--modulation")
             .width(Stretch(1.0))
-            .visibility(modulation_start_delta_lens.map(|(_, delta)| *delta != 0.0))
+            .visibility(modulation_start_delta.map(|(_, delta)| *delta != 0.0))
             // Widths cannot be negative, so we need to compensate the start
             // position if the width does happen to be negative
-            .height(modulation_start_delta_lens.map(|(_, delta)| Percentage(delta.abs() * 100.0)))
-            .top(modulation_start_delta_lens.map(|(start_t, delta)| {
+            .height(modulation_start_delta.map(|(_, delta)| Percentage(delta.abs() * 100.0)))
+            .top(modulation_start_delta.map(|(start_t, delta)| {
                 if *delta < 0.0 {
                     Percentage((start_t + delta) * 100.0)
                 } else {
@@ -262,15 +241,14 @@ impl ParamSliderV {
     }
 
     /// Create the text part of the slider. Shown on top of the fill using a `ZStack`.
-    fn slider_label_view<P: Param, L: Lens<Target = String>>(
+    fn slider_label_view(
         cx: &mut Context,
-        param: &P,
+        param_base: ParamWidgetBase,
         style: ParamSliderStyle,
-        display_value_lens: impl Lens<Target = String>,
-        make_preview_value_lens: impl Fn(f32) -> L,
-        label_override_lens: impl Lens<Target = Option<String>>,
+        display_value: Memo<String>,
+        label_override: SyncSignal<Option<String>>,
     ) {
-        let step_count = param.step_count();
+        let step_count = param_base.step_count();
 
         // Either display the current value, or display all values over the
         // parameter's steps
@@ -284,9 +262,9 @@ impl ParamSliderV {
                     // discrete parameter
                     for value in 0..step_count + 1 {
                         let normalized_value = value as f32 / step_count as f32;
-                        let preview_lens = make_preview_value_lens(normalized_value);
-        
-                        Label::new(cx, preview_lens)
+                        let preview = param_base.normalized_value_to_string(normalized_value, true);
+
+                        Label::new(cx, preview)
                             .class("value")
                             .class("value--multiple")
                             .alignment(Alignment::Center)
@@ -299,46 +277,35 @@ impl ParamSliderV {
                     .hoverable(false);
             }
             _ => {
-                Binding::new(cx, label_override_lens, move |cx, label_override_lens| {
-                    // If the label override is set then we'll use that. If not, the parameter's
-                    // current display value (before modulation) is used.
-                    match label_override_lens.get(cx) {
-                        Some(label_override) => Label::new(cx, &label_override),
-                        None => Label::new(cx, display_value_lens.map( move |value_str| {
-                            match style {
-                                // When using the Scaled style, scale the parameter value by factor and round.
-                                ParamSliderStyle::Scaled { factor } => {
-                                    if let Ok(v) = value_str.parse::<f32>() {
-                                        (v * factor as f32).floor().to_string()
-                                    } else {
-                                        value_str.clone()
-                                    }
-                                }
-                                _ => value_str.clone(),
-                            }
-                        })),
-                    }
-                        .class("value")
-                        .class("value--single")
-                        .alignment(Alignment::Center)
-                        .size(Stretch(1.0))
-                        .hoverable(false);
-                });
+                // Derived label text: either the `.with_label(...)` override when set, or the
+                // parameter's own formatted display value (before modulation). Built as a
+                // `Memo<String>` so the Label updates its text in place when either input
+                // changes — cheaper than rebuilding the view subtree via `Binding::new`.
+                let text: Memo<String> =
+                    Memo::new(move |_| label_override.get().unwrap_or_else(|| display_value.get()));
+                Label::new(cx, text)
+                    .class("value")
+                    .class("value--single")
+                    .alignment(Alignment::Center)
+                    .size(Stretch(1.0))
+                    .hoverable(false);
             }
         };
     }
-    
+
     /// Calculate the start position and width of the slider's fill region based on the selected
     /// style, the parameter's current value, and the parameter's step sizes. The resulting tuple
     /// `(start_t, delta)` corresponds to the start and the signed width of the bar. `start_t` is in
     /// `[0, 1]`, and `delta` is in `[-1, 1]`.
-    fn compute_fill_start_delta<P: Param>(
+    fn compute_fill_start_delta(
         style: ParamSliderStyle,
-        param: &P,
+        param_ptr: ParamPtr,
         current_value: f32,
     ) -> (f32, f32) {
-        let default_value = param.default_normalized_value();
-        let step_count = param.step_count();
+        // SAFETY: `param_ptr` was resolved from a valid `&impl Param` at widget construction;
+        // it stays valid for the plugin's lifetime.
+        let default_value = unsafe { param_ptr.default_normalized_value() };
+        let step_count = unsafe { param_ptr.step_count() };
         let draw_fill_from_default = matches!(style, ParamSliderStyle::Centered)
             && step_count.is_none()
             && (0.45..=0.55).contains(&default_value);
@@ -364,7 +331,7 @@ impl ParamSliderV {
                     if delta >= 1e-3 { delta } else { 0.0 },
                 )
             }
-            ParamSliderStyle::Centered | ParamSliderStyle::FromLeft 
+            ParamSliderStyle::Centered | ParamSliderStyle::FromLeft
             | ParamSliderStyle::Scaled { .. } => (0.0, current_value),
             ParamSliderStyle::CurrentStep { even: true }
             | ParamSliderStyle::CurrentStepLabeled { even: true }
@@ -379,8 +346,9 @@ impl ParamSliderV {
                     (previous_step, discrete_values.recip())
                 }
             ParamSliderStyle::CurrentStep { .. } | ParamSliderStyle::CurrentStepLabeled { .. } => {
-                let previous_step = param.previous_normalized_step(current_value, false);
-                let next_step = param.next_normalized_step(current_value, false);
+                let previous_step =
+                    unsafe { param_ptr.previous_normalized_step(current_value, false) };
+                let next_step = unsafe { param_ptr.next_normalized_step(current_value, false) };
 
                 (
                     (previous_step + current_value) / 2.0,
@@ -391,27 +359,21 @@ impl ParamSliderV {
     }
 
     /// The same as `compute_fill_start_delta`, but just showing the modulation offset.
-    fn compute_modulation_fill_start_delta<P: Param>(
+    fn compute_modulation_fill_start_delta(
         style: ParamSliderStyle,
-        param: &P,
+        unmodulated_normalized: f32,
+        modulated_normalized: f32,
     ) -> (f32, f32) {
         match style {
-            // Don't show modulation for stepped parameters since it wouldn't
-            // make a lot of sense visually
+            // Don't show modulation for stepped parameters — visually meaningless.
             ParamSliderStyle::CurrentStep { .. } | ParamSliderStyle::CurrentStepLabeled { .. } => {
                 (0.0, 0.0)
             }
-            ParamSliderStyle::Centered
-            | ParamSliderStyle::FromMidPoint
-            | ParamSliderStyle::FromLeft 
-            | ParamSliderStyle::Scaled { .. } => {
-                let modulation_start = param.unmodulated_normalized_value();
-
-                (
-                    modulation_start,
-                    param.modulated_normalized_value() - modulation_start,
-                )
-            }
+            ParamSliderStyle::Centered | ParamSliderStyle::FromLeft => (
+                unmodulated_normalized,
+                modulated_normalized - unmodulated_normalized,
+            ),
+            _ => (0.0, 0.0)
         }
     }
 
@@ -420,7 +382,7 @@ impl ParamSliderV {
     /// to match up with the fill value display. This still needs to be wrapped in a parameter
     /// automation gesture.
     fn set_normalized_value_drag(&self, cx: &mut EventContext, normalized_value: f32) {
-        let normalized_value = match (self.style, self.param_base.step_count()) {
+        let normalized_value = match (self.style.get(), self.param_base.step_count()) {
             (
                 ParamSliderStyle::CurrentStep { even: true }
                 | ParamSliderStyle::CurrentStepLabeled { even: true },
@@ -448,7 +410,7 @@ impl View for ParamSliderV {
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|param_slider_event, meta| match param_slider_event {
             ParamSliderEvent::CancelTextInput => {
-                self.text_input_active = false;
+                self.text_input_active.set(false);
                 cx.set_active(false);
 
                 meta.consume();
@@ -460,7 +422,7 @@ impl View for ParamSliderV {
                     self.param_base.end_set_parameter(cx);
                 }
 
-                self.text_input_active = false;
+                self.text_input_active.set(false);
 
                 meta.consume();
             }
@@ -475,7 +437,7 @@ impl View for ParamSliderV {
             | WindowEvent::MouseTripleClick(MouseButton::Left) => {
                 if cx.modifiers().alt() {
                     // ALt+Click brings up a text entry dialog
-                    self.text_input_active = true;
+                    self.text_input_active.set(true);
                     cx.set_active(true);
                 } else if cx.modifiers().command() {
                     // Ctrl+Click, double click, and right clicks should reset the parameter instead
@@ -484,7 +446,7 @@ impl View for ParamSliderV {
                     self.param_base
                         .set_normalized_value(cx, self.param_base.default_normalized_value());
                     self.param_base.end_set_parameter(cx);
-                } else if !self.text_input_active {
+                } else if !self.text_input_active.get() {
                     // The `!self.text_input_active` check shouldn't be needed, but the textbox does
                     // not consume the mouse down event. So clicking on the textbox to move the
                     // cursor would also change the slider.
@@ -648,12 +610,12 @@ impl ParamSliderVExt for Handle<'_, ParamSliderV> {
     }
 
     fn set_style(self, style: ParamSliderStyle) -> Self {
-        self.modify(|param_slider: &mut ParamSliderV| param_slider.style = style)
+        self.modify(|param_slider: &mut ParamSliderV| param_slider.style.set(style))
     }
 
     fn _with_label(self, value: impl Into<String>) -> Self {
         self.modify(|param_slider: &mut ParamSliderV| {
-            param_slider.label_override = Some(value.into())
+            param_slider.label_override.set(Some(value.into()))
         })
     }
 }

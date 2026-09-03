@@ -1,5 +1,5 @@
-use nih_plug::prelude::*;
-use std::sync::{Arc};
+use nice_plug::prelude::*;
+use std::sync::Arc;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use crate::metre::beat_origin::BeatOrigin;
 use crate::metre::beat_origin::BeatOrigin::*;
@@ -12,7 +12,6 @@ mod metre;
 mod gui;
 mod util;
 mod params;
-
 
 struct MetreFiddler {
     params: Arc<MetreFiddlerParams>,
@@ -143,7 +142,7 @@ impl MetreFiddler {
 
         // TODO no_many_velocities + don't_interpolate is a bit confusing for the user
 
-        if self.params_snapshot.interpolate_durs {
+        if self.params_snapshot.interpolate_durations {
             let durations = interpolation_data.get_interpolated_durations(self.params_snapshot.interpolate);
             let (idx, sum, total_nr_beats) = self.get_beat_idx_from_durations(durations);
 
@@ -170,7 +169,7 @@ impl MetreFiddler {
         }
 
         let indisp_val_temp: f32 =
-            if self.params_snapshot.interpolate_indisp|| current_beat_origin == Both {
+            if self.params_snapshot.interpolate_indisp || current_beat_origin == Both {
                 dry_wet(
                     *metric_data_a.value.get(current_beat_idx_a).unwrap_or(&0),
                     *metric_data_b.value.get(current_beat_idx_b).unwrap_or(&0),
@@ -307,7 +306,7 @@ impl Plugin for MetreFiddler {
                     self.sample_rate,
                     self.params_snapshot.use_bpm,
                     context.transport().tempo,
-                    self.params.retain_metric_phase.load(Relaxed)
+                    self.params_snapshot.retain_metric_phase
                 );
 
             // loop through events at this time
@@ -365,7 +364,7 @@ impl Plugin for MetreFiddler {
                             }
                         };
                         let note = 60
-                            + if self.params_snapshot.output_one_pitch {
+                            + if self.params_snapshot.midi_out_one_note {
                             0
                         } else if self.params_snapshot.many_velocities {
                             indisp_val as u8
@@ -425,6 +424,8 @@ impl Plugin for MetreFiddler {
 
         ProcessStatus::Normal
     }
+
+    fn deactivate(&mut self) {}
 }
 
 impl ClapPlugin for MetreFiddler {
@@ -446,5 +447,5 @@ impl Vst3Plugin for MetreFiddler {
         &[Vst3SubCategory::Fx, Vst3SubCategory::Tools];
 }
 
-nih_export_clap!(MetreFiddler);
-nih_export_vst3!(MetreFiddler);
+nice_export_clap!(MetreFiddler);
+nice_export_vst3!(MetreFiddler);

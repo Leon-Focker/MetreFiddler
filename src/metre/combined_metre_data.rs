@@ -1,10 +1,9 @@
 use serde::{Deserialize, Serialize};
-use vizia_plug::vizia::prelude::Data;
 use crate::metre::interpolation::interpolation_data::InterpolationData;
 use crate::metre::metre_data::MetreData;
 
 /// Holds metric data for A and B and information used for interpolating between the two.
-#[derive(Debug, Serialize, Deserialize, Clone, Data)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CombinedMetreData {
     metre_a: MetreData,
     metre_b: MetreData,

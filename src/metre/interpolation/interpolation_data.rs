@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use vizia_plug::vizia::prelude::Data;
 use crate::metre::beat_origin::BeatOrigin;
 use crate::metre::interpolation::index_pairs::IndexPairs;
 use crate::util::{approx_eq, dry_wet, get_durations, get_start_times};
@@ -18,7 +17,7 @@ struct InterpolationDataHelper<'a> {
 /// Additionally, a sorted list with all unique start-times is stored, plus a list of BeatOrigin,
 /// telling us in which of the two Metres a start-time came from. These start-times correlate with the
 /// stored interleaved_durations and interleaved_gnsm.
-#[derive(Debug, Serialize, Deserialize, Clone, Data, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct InterpolationData {
     duration_pairs: Vec<(f32, f32)>,
     interleaved_durations: Vec<f32>,

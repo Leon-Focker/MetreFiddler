@@ -1,4 +1,4 @@
-use nih_plug::params::Param;
+use nice_plug::params::Param;
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::param_base::ParamWidgetBase;
 

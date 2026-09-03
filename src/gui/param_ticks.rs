@@ -4,27 +4,22 @@ use crate::metre::beat_origin::BeatOrigin::Both;
 use crate::metre::interpolation::interpolation_data::InterpolationData;
 use crate::util::{get_durations};
 
-#[derive(Lens)]
 pub struct ParamTicks {}
 
 impl ParamTicks {
     pub fn new<L>(
         cx: &mut Context,
         width_pixels: f32,
-        interpolation_data: L,
+        interpolation_data: impl Res<InterpolationData>,
         interpolate: f32,
         interpolate_durs: bool,
     ) -> Handle<'_, Self>
-    where
-        L: Lens<Target = InterpolationData>,
     {
         Self {}
             .build(
                 cx,
                 |cx| {
-                    Binding::new(cx, interpolation_data, move |cx, data| {
-                        Self::ticks(cx, data, interpolate, interpolate_durs, width_pixels);
-                    });
+                    Self::ticks(cx, interpolation_data, interpolate, interpolate_durs, width_pixels);
                 }
             )
             .width(Pixels(width_pixels))
@@ -33,7 +28,7 @@ impl ParamTicks {
 
     fn ticks(
         cx: &mut Context,
-        interpolation_data: impl Lens<Target = InterpolationData>,
+        interpolation_data: impl Res<InterpolationData>,
         interpolate: f32,
         interpolate_durs: bool,
         width_px: f32,
@@ -51,10 +46,10 @@ impl ParamTicks {
             let opacity_ids: Vec<BeatOrigin>;
 
             if interpolate_durs {
-                durations = interpolation_data.get(cx).get_interpolated_durations(interpolate).collect();
+                durations = interpolation_data.get_value(cx).get_interpolated_durations(interpolate).collect();
                 opacity_ids = vec![Both; durations.len()];
             } else {
-                let interpolation_data = interpolation_data.get(cx);
+                let interpolation_data = interpolation_data.get_value(cx);
                 let starts = interpolation_data.unique_start_times();
                 let inits = interpolation_data.unique_start_time_origins();
                 

@@ -1,8 +1,6 @@
-use nih_plug::nih_log;
 use vizia_plug::vizia::prelude::*;
 use crate::editor::MetreFiddlerEvent;
 
-#[derive(Lens)]
 pub struct MetreInput {}
 
 #[derive(Clone, Copy, Debug)]
@@ -14,11 +12,9 @@ pub enum MetreAorB {
 impl MetreInput {
     pub fn new<L>(
         cx: &mut Context,
-        text_data: L,
+        text_data: Signal<String>,
         which: MetreAorB,
     ) -> Handle<'_, Self>
-    where
-        L: Lens<Target = String>,
     {
         Self {}
             .build(cx,|cx| {
@@ -55,7 +51,6 @@ impl View for MetreInput {
             }
             // TODO scrolling should work out of the box but even this doesn't work?
             WindowEvent::MouseScroll(x, y) => {
-                nih_log!("scrolling!");
                 cx.emit(TextEvent::Scroll(*x, *y))
             },
             _ => (),

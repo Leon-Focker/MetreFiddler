@@ -1,11 +1,10 @@
 use serde::{Serialize, Deserialize};
 use crate::metre::indispensability::{gnsm_to_indispensability_list};
 use crate::metre::rqq::parse_rqq;
-use vizia_plug::vizia::prelude::Data;
 
 // *must* derive Serialize and Deserialize for persistence
 /// Holds all the important information for an RQQ defined metric structure.
-#[derive(Debug, Serialize, Deserialize, Clone, Data)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MetreData {
     pub string: String,
     pub value: Vec<usize>,

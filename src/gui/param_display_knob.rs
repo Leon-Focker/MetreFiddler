@@ -1,6 +1,9 @@
+use nice_plug::params::Param;
+use vizia_plug::vizia::prelude::*;
+use vizia_plug::widgets::param_base::ParamWidgetBase;
 // This is a modified copy of nih-plugs param_slider.rs
 // ! A slider that integrates with NIH-plug's [`Param`] types.
-use vizia_plug::vizia::prelude::*;
+
 
 // TODO this is a lot of repeated code from param_slider_knob...
 
