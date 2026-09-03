@@ -10,7 +10,7 @@ pub enum MetreAorB {
 }
 
 impl MetreInput {
-    pub fn new<L>(
+    pub fn new(
         cx: &mut Context,
         text_data: Signal<String>,
         which: MetreAorB,

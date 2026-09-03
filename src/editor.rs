@@ -1,4 +1,3 @@
-use std::ops::DerefMut;
 use nice_plug::prelude::{util, Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
@@ -10,13 +9,13 @@ use atomic_float::AtomicF32;
 use nice_plug::{nice_log};
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::*;
-use crate::gui::metre_input::MetreAorB;
 use crate::gui::param_label::ParamLabel;
+//use crate::gui::param_slider_knob::ParamSliderKnob;
 use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
 use crate::gui::param_slider_vertical::ParamSliderStyle::Scaled;
 use crate::gui::settings_button::{SettingsButton, SettingsButtonModifiers};
-// use crate::gui::metre_input::{MetreAorB, MetreInput};
-// use crate::gui::metre_input::MetreAorB::{MetreA, MetreB};
+use crate::gui::metre_input::{MetreAorB, MetreInput};
+use crate::gui::metre_input::MetreAorB::{MetreA, MetreB};
 // use crate::gui::param_binding::ParamBinding;
 // use crate::gui::param_display_knob::ParamDisplayKnob;
 // use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
@@ -62,14 +61,17 @@ pub(crate) struct AppData {
     pub retain_metric_phase: SyncSignal<bool>,
     // others
     pub(crate) screen: Signal<MetreFiddlerScreen>,
+    pub(crate) last_input_is_valid: Signal<String>,
+    pub(crate) display_which_metre: Signal<MetreAorB>,
+    pub(crate) display_validity: Signal<bool>,
+    pub(crate) textbox_expanded: Signal<bool>,
+    pub(crate) text_input_a: Signal<String>,
+    pub(crate) text_input_b: Signal<String>,
     // pub(crate) interpolation_data_snapshot: Signal<InterpolationData>,
     // pub(crate) textbox_expanded: bool,
     // pub(crate) text_input_a: String,
     // pub(crate) text_input_b: String,
-    // pub(crate) display_b: Signal<bool>,
-    // pub(crate) last_input_is_valid: Signal<bool>,
     // pub(crate) max_threshold: Signal<usize>,
-    // pub(crate) display_metre_validity: Signal<bool>,
     // pub(crate) displayed_position: Signal<f32>,
     // pub(crate) check_for_phase_reset_toggle: Signal<bool>,   // this is toggled for every frame until the phase_reset button has been reset
 }
@@ -141,27 +143,45 @@ pub(crate) fn create(
     create_vizia_editor(editor_state, ViziaTheming::Custom, move |cx, _| {
         // add new styling
         let _ = cx.add_stylesheet(NEW_STYLE);
-        //let metric_data = params.combined_metre_data.lock().unwrap();
+        let metric_data = params.combined_metre_data.lock().unwrap();
 
-        let screen = Signal::from(MetreFiddlerScreen::Settings);
+        // App Parameters
+        let screen = Signal::from(MetreFiddlerScreen::Main);
+        let interpolate_durations = SyncSignal::from(params.interpolate_durations.load(Relaxed));
+        let many_velocities = SyncSignal::from(params.many_velocities.load(Relaxed));
+        let midi_out_one_note = SyncSignal::from(params.midi_out_one_note.load(Relaxed));
+        let interpolate_indisp = SyncSignal::from(params.interpolate_indisp.load(Relaxed));
+        let retain_metric_phase= SyncSignal::from(params.retain_metric_phase.load(Relaxed));
+        let last_input_is_valid = Signal::new("✔️".to_string());
+        let display_which_metre = Signal::from(MetreA);
+        let display_validity = Signal::from(true);
+        let text_input_a = Signal::from(metric_data.metre_a().string.clone());
+        let text_input_b = Signal::from(metric_data.metre_b().string.clone());
+        let textbox_expanded = Signal::from(false);
+
+        // interpolation_data_snapshot: metric_data.interpolation_data().clone(),
+        // max_threshold: metric_data.metre_a().max.max(metric_data.metre_b().max),
+        // displayed_position: params.displayed_position.clone(),
+        // check_for_phase_reset_toggle: false,
+
         AppData {
             params: params.clone(),
-            interpolate_durations: SyncSignal::from(params.interpolate_durations.load(Relaxed)),
-            many_velocities: SyncSignal::from(params.many_velocities.load(Relaxed)),
-            midi_out_one_note: SyncSignal::from(params.midi_out_one_note.load(Relaxed)),
-            interpolate_indisp: SyncSignal::from(params.interpolate_indisp.load(Relaxed)),
-            retain_metric_phase: SyncSignal::from(params.retain_metric_phase.load(Relaxed)),
             screen,
+            interpolate_durations,
+            many_velocities,
+            midi_out_one_note,
+            interpolate_indisp,
+            retain_metric_phase,
             // interpolation_data_snapshot: Signal::from(metric_data.interpolation_data().clone()),
             // max_threshold: metric_data.metre_a().max.max(metric_data.metre_b().max),
-            // text_input_a: metric_data.metre_a().string.clone(),
-            // text_input_b: metric_data.metre_b().string.clone(),
-            // last_input_is_valid: true,
-            // display_b: false,
-            // display_metre_validity: true,
             // displayed_position: Signal::from(params.displayed_position.load(Relaxed)),
             // check_for_phase_reset_toggle: false,
-            // textbox_expanded: false,
+            last_input_is_valid,
+            display_which_metre,
+            display_validity,
+            textbox_expanded,
+            text_input_a,
+            text_input_b,
         }
             .build(cx);
 
@@ -171,19 +191,30 @@ pub(crate) fn create(
         //     cx.emit(ToggleCheckForPhaseReset);
         // });
 
-       Binding::new(cx, screen,  move |cx| {
+        let binding_params = params.clone();
+
+       Binding::new(cx, screen, move |cx| {
+           let binding_params = binding_params.clone();
            match screen.get() {
                MetreFiddlerScreen::Settings => {
                    settings_window(cx);
                },
                MetreFiddlerScreen::Main => {
                    // Upper Part of the Plugin
-                   VStack::new(cx,  |cx| {
+                   VStack::new(cx,  move |cx| {
                        upper_part(cx);
                    })
                        .height(Stretch(3.0));
                    // Lower Part of the Plugin
-                   //lower_part(cx);
+                   lower_part(cx,
+                              text_input_a,
+                              text_input_b,
+                              screen,
+                              binding_params.clone(),
+                              display_which_metre,
+                              display_validity,
+                              last_input_is_valid,
+                              textbox_expanded);
                }
                MetreFiddlerScreen::Info => {
                    // Upper Part of the Plugin
@@ -192,7 +223,15 @@ pub(crate) fn create(
                    })
                        .height(Stretch(3.0));
                    // Lower Part of the Plugin
-                   //lower_part(cx);
+                   lower_part(cx,
+                              text_input_a,
+                              text_input_b,
+                              screen,
+                              binding_params.clone(),
+                              display_which_metre,
+                              display_validity,
+                              last_input_is_valid,
+                              textbox_expanded);
                }
            };
        });
@@ -250,7 +289,7 @@ fn settings_window(cx: &mut Context) {
     // Settings Icon
     HStack::new(cx, |cx| {
         ZStack::new(cx, |cx| {
-            Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0)).cursor(CursorIcon::Hand);
+            Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0)).cursor(CursorIcon::Hand).background_color(Color::black());
         })
             .hoverable(true)
             .on_press(|cx|cx.emit(SetScreen(MetreFiddlerScreen::Main)))
@@ -391,4 +430,148 @@ fn upper_part(cx: &mut Context) {
     //         .alignment(Alignment::Center)
     //         .width(Stretch(1.0));
     // });
+}
+
+// Lower Part of the Plugin, containing the Metre Definition
+fn lower_part(cx: &mut Context,
+              text_input_a: Signal<String>,
+              text_input_b: Signal<String>,
+              screen: Signal<MetreFiddlerScreen>,
+              params: Arc<MetreFiddlerParams>,
+              display_which_metre: Signal<MetreAorB>,
+              display_validity: Signal<bool>,
+              is_valid: Signal<String>,
+              textbox_expanded: Signal<bool>) {
+    // The entire lower part
+    VStack::new(cx, move |cx| {
+
+        // First Row: Textfield, info and feedback:
+        HStack::new(cx, |cx| {
+            // Info Button
+            VStack::new(cx, |cx| {
+                Button::new(cx,
+                            |cx| Label::new(cx, "info"))
+                    .on_press(move |cx| {
+                        match screen.get() {
+                            MetreFiddlerScreen::Info => cx.emit(SetScreen(MetreFiddlerScreen::Main)),
+                            _ => cx.emit(SetScreen(MetreFiddlerScreen::Info)),
+                        }
+                    })
+                    .position_type(PositionType::Absolute)
+                    .right(Pixels(10.0));
+            });
+
+            // Metre Input for A or B
+            VStack::new(cx, |cx| {
+                Binding::new(cx, display_which_metre, move |cx| {
+                    Binding::new(cx, textbox_expanded,  move |cx| {
+                        if textbox_expanded.get() {
+                            Popover::new(cx, |cx| {
+                                match display_which_metre.get() {
+                                    MetreA =>  MetreInput::new(cx, text_input_a, MetreA),
+                                    MetreB =>  MetreInput::new(cx, text_input_b, MetreB),
+                                };
+                            })
+                                .lock_focus_to_within() // automatically move into popup textbox
+                                .placement(Placement::Over)
+                                .background_color(Color::yellowgreen())
+                                .height(Pixels(75.0)); // TODO adjust size or add scrollable view in future?
+                        } else {
+                            match display_which_metre.get() {
+                                MetreA =>  MetreInput::new(cx, text_input_a, MetreA),
+                                MetreB =>  MetreInput::new(cx, text_input_b, MetreB),
+                            };
+                        }
+                    });
+                });
+            })
+                .width(Stretch(3.0));
+
+            // is valid
+            VStack::new(cx, move |cx| {
+                Binding::new(cx, display_validity, move |cx| {
+                    if display_validity.get() {
+                        Label::new(cx, is_valid)
+                            .position_type(PositionType::Absolute)
+                            .top(Pixels(5.0))
+                            .left(Pixels(10.0));
+                    }
+                })
+            });
+        })
+            .height(Pixels(32.0));
+
+        // Second Row: Send Midi, Interpolation, Settings
+        HStack::new(cx, |cx| {
+            // Extra HStack with height 50p for alignment
+            HStack::new(cx, |cx| {
+                // Send Midi Events?
+                VStack::new(cx, |cx| {
+                    ParamButton::new(cx, &params.send_midi)
+                        .alignment(Alignment::Center)
+                        .with_label("Send Midi")
+                        .class("red_button")
+                        .width(Pixels(80.0));
+                })
+                    .alignment(Alignment::Center);
+
+                // Switching A & B
+                HStack::new(cx, move |cx| {
+                    // Switch between A and B
+                    Binding::new(cx, display_which_metre, move |cx| { // todo binding needed?
+                        Button::new(cx,
+                                    |cx|
+                                        match display_which_metre.get() {
+                                            MetreA => Label::new(cx, "Switch to B"),
+                                            MetreB => Label::new(cx, "Switch to A"),
+                                        }
+                        )
+                            .on_press(|cx| {
+                                cx.emit(ToggleAB)
+                            })
+                            .alignment(Alignment::Center);
+                    });
+
+                    Element::new(cx).width(Pixels(10.0));
+
+                    // Interpolation
+                    HStack::new(cx, |cx| {
+                        Label::new(cx, "A");
+
+                        Element::new(cx).width(Pixels(10.0));
+
+                        // ParamSliderKnob::new(cx, params, |params|
+                        //     &params.interpolate_a_b)
+                        //     .height(Pixels(20.0))
+                        //     .width(Pixels(100.0));
+
+                        Element::new(cx).width(Pixels(10.0));
+
+                        Label::new(cx, "B");
+                    })
+                        .alignment(Alignment::Center);
+                })
+                    .alignment(Alignment::Center)
+                    .width(Stretch(3.0));
+
+                // Settings
+                HStack::new(cx, |cx| {
+                    ZStack::new(cx, |cx| {
+                        Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0));
+                    })
+                        .hoverable(true)
+                        .on_press(|cx|cx.emit(SetScreen(MetreFiddlerScreen::Settings)))
+                        .width(Pixels(24.0))
+                        .height(Pixels(24.0));
+                    Element::new(cx)
+                        .width(Pixels(24.0));
+                })
+                    .width(Stretch(1.0))
+                    .alignment(Alignment::Right);
+            })
+                .height(Pixels(50.0));
+        })
+            .alignment(Alignment::TopCenter)
+            .height(Stretch(2.0));
+    });
 }
