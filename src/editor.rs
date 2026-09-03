@@ -10,7 +10,7 @@ use nice_plug::{nice_log};
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::*;
 use crate::gui::param_label::ParamLabel;
-//use crate::gui::param_slider_knob::ParamSliderKnob;
+use crate::gui::param_slider_knob::ParamSliderKnob;
 use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
 use crate::gui::param_slider_vertical::ParamSliderStyle::Scaled;
 use crate::gui::settings_button::{SettingsButton, SettingsButtonModifiers};
@@ -540,10 +540,9 @@ fn lower_part(cx: &mut Context,
 
                         Element::new(cx).width(Pixels(10.0));
 
-                        // ParamSliderKnob::new(cx, params, |params|
-                        //     &params.interpolate_a_b)
-                        //     .height(Pixels(20.0))
-                        //     .width(Pixels(100.0));
+                        ParamSliderKnob::new(cx, &params.interpolate_a_b)
+                            .height(Pixels(20.0))
+                            .width(Pixels(100.0));
 
                         Element::new(cx).width(Pixels(10.0));
 

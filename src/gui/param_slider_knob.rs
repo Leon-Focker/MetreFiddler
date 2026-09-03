@@ -1,9 +1,10 @@
-// This is a modified copy of nih-plugs param_slider.rs
-// ! A slider that integrates with NIH-plug's [`Param`] types.
 use nice_plug::params::Param;
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::param_base::ParamWidgetBase;
 use vizia_plug::widgets::util::{self, ModifiersExt};
+// This is a modified copy of nih-plugs param_slider.rs
+// ! A slider that integrates with NIH-plug's [`Param`] types.
+
 
 /// When shift+dragging a parameter, one pixel dragged corresponds to this much change in the
 /// normalized parameter.
@@ -11,7 +12,6 @@ const GRANULAR_DRAG_MULTIPLIER: f32 = 0.1;
 
 /// A slider that integrates with NIH-plug's [`Param`] types. Use the
 /// [`set_style()`][ParamSliderExt::set_style()] method to change how the value gets displayed.
-#[derive(Lens)]
 #[allow(dead_code)]
 pub struct ParamSliderKnob {
     param_base: ParamWidgetBase,
@@ -45,30 +45,20 @@ pub struct GranularDragStatus {
 }
 
 impl ParamSliderKnob {
-    /// Creates a new [`ParamSliderKnob`] for the given parameter. To accommodate VIZIA's mapping system,
-    /// you'll need to provide a lens containing your `Params` implementation object (check out how
-    /// the `Data` struct is used in `gain_gui_vizia`) and a projection function that maps the
-    /// `Params` object to the parameter you want to display a widget for. Parameter changes are
-    /// handled by emitting [`ParamEvent`][super::ParamEvent]s which are automatically handled by
-    /// the VIZIA wrapper.
-    ///
-    /// See [`ParamSliderExt`] for additional options.
-    pub fn new<L, Params, P, FMap>(
-        cx: &mut Context,
-        params: L,
-        params_to_param: FMap,
-    ) -> Handle<'_, Self>
+    /// Creates a new [`ParamSliderKnob`] for the given parameter. Pass a reference to the
+    /// parameter directly — e.g. `ParamSliderKnob::new(cx, &params.my_toggle)`.
+    pub fn new<'c, 'p, P>(cx: &'c mut Context, param: &'p P) -> Handle<'c, Self>
     where
-        L: Lens<Target = Params> + Clone,
-        Params: 'static,
+        'p: 'c,
         P: Param + 'static,
-        FMap: Fn(&Params) -> &P + Copy + 'static,
     {
-        // We'll visualize the difference between the current value and the default value if the
-        // default value lies somewhere in the middle and the parameter is continuous. Otherwise
-        // this approach looks a bit jarring.
+        let param_base = ParamWidgetBase::new(cx, param);
+        let unmodulated_signal = param_base.unmodulated_signal(cx);
+        let modulated_signal = param_base.modulated_signal(cx);
+        let vertical = false;
+
         Self {
-            param_base: ParamWidgetBase::new(cx, params, params_to_param),
+            param_base,
             
             drag_active: false,
             granular_drag_status: None,
@@ -76,41 +66,35 @@ impl ParamSliderKnob {
             use_scroll_wheel: true,
             scrolled_lines: 0.0,
             label_override: None,
-            vertical: false,
+            vertical,
         }
             .build(
                 cx,
-                ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
-                    Binding::new(cx, ParamSliderKnob::vertical, move |cx, vertical| {
-                        let vertical = vertical.get(cx);
+                ParamWidgetBase::build_view(param, move |cx, param_data| {
+                    let vertical = vertical;
 
-                        // Can't use `.to_string()` here as that would include the modulation.
-                        let unmodulated_normalized_value_lens =
-                            param_data.make_lens(|param| param.unmodulated_normalized_value());
-
-                        // The resulting tuple `(start_t, delta)` corresponds to the start and the
-                        // signed width of the bar. `start_t` is in `[0, 1]`, and `delta` is in
-                        // `[-1, 1]`.
-                        let fill_start_delta_lens =
-                            unmodulated_normalized_value_lens.map(move |current_value| {
-                                Self::compute_fill_start_delta(
-                                    *current_value,
-                                )
-                            });
-
-                        ZStack::new(cx, |cx| {
-                            Self::slider_bar(
-                                cx,
-                                vertical,
-                            );
-                            Self::slider_fill_view(
-                                cx,
-                                vertical,
-                                fill_start_delta_lens,
-                            );
-                        })
-                            .hoverable(false);
+                    // The resulting tuple `(start_t, delta)` corresponds to the start and the
+                    // signed width of the bar. `start_t` is in `[0, 1]`, and `delta` is in
+                    // `[-1, 1]`.
+                    let fill_start_delta: Memo<(f32, f32)> = Memo::new(move |_| {
+                        let current = unmodulated_signal.get();
+                        Self::compute_fill_start_delta(
+                            current,
+                        )
                     });
+
+                    ZStack::new(cx, |cx| {
+                        Self::slider_bar(
+                            cx,
+                            vertical,
+                        );
+                        Self::slider_fill_view(
+                            cx,
+                            vertical,
+                            fill_start_delta,
+                        );
+                    })
+                        .hoverable(false);
                 }),
             )
             // To override the css styling:
@@ -151,7 +135,7 @@ impl ParamSliderKnob {
     fn slider_fill_view(
         cx: &mut Context,
         vertical: bool,
-        fill_start_delta_lens: impl Lens<Target = (f32, f32)>,
+        fill_start_delta_lens: Memo<(f32, f32)>,
     ) {
         if vertical {
             VStack::new(cx, |cx| {
