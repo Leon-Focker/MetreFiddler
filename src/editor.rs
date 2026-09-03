@@ -5,22 +5,17 @@ use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
 use vizia_plug::vizia::icons::ICON_SETTINGS;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
-use atomic_float::AtomicF32;
-use nice_plug::{nice_log};
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::*;
 use crate::gui::param_label::ParamLabel;
-use crate::gui::param_slider_knob::ParamSliderKnob;
+use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
 use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
 use crate::gui::param_slider_vertical::ParamSliderStyle::Scaled;
 use crate::gui::settings_button::{SettingsButton, SettingsButtonModifiers};
 use crate::gui::metre_input::{MetreAorB, MetreInput};
 use crate::gui::metre_input::MetreAorB::{MetreA, MetreB};
-// use crate::gui::param_binding::ParamBinding;
-// use crate::gui::param_display_knob::ParamDisplayKnob;
-// use crate::gui::param_slider_vertical::ParamSliderStyle::{Scaled};
-// use crate::gui::param_label::{ParamLabel};
-// use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
+use crate::gui::param_binding::ParamBinding;
+use crate::gui::param_display_knob::ParamDisplayKnob;
 use crate::gui::param_ticks::ParamTicks;
 use crate::metre::interpolation::interpolation_data::InterpolationData;
 use crate::metre::metre_data::MetreData;
@@ -51,6 +46,9 @@ const NEW_STYLE: &str = r#"
     }
 "#;
 
+
+
+
 pub(crate) struct AppData {
     pub(crate) params: Arc<MetreFiddlerParams>,
     // settings
@@ -67,12 +65,10 @@ pub(crate) struct AppData {
     pub(crate) textbox_expanded: Signal<bool>,
     pub(crate) text_input_a: Signal<String>,
     pub(crate) text_input_b: Signal<String>,
+    pub(crate) max_threshold: Signal<usize>,
+    pub(crate) current_nr_beats: Signal<usize>,
     // pub(crate) interpolation_data_snapshot: Signal<InterpolationData>,
-    // pub(crate) textbox_expanded: bool,
-    // pub(crate) text_input_a: String,
-    // pub(crate) text_input_b: String,
-    // pub(crate) max_threshold: Signal<usize>,
-    // pub(crate) displayed_position: Signal<f32>,
+    pub(crate) displayed_position: SyncSignal<f32>,
     // pub(crate) check_for_phase_reset_toggle: Signal<bool>,   // this is toggled for every frame until the phase_reset button has been reset
 }
 
@@ -158,9 +154,11 @@ pub(crate) fn create(
         let text_input_a = Signal::from(metric_data.metre_a().string.clone());
         let text_input_b = Signal::from(metric_data.metre_b().string.clone());
         let textbox_expanded = Signal::from(false);
+        let max_threshold = Signal::from(metric_data.metre_a().max.max(metric_data.metre_b().max));
+        let current_nr_beats = Signal::from(0); // TODO
+        let displayed_position = SyncSignal::from(params.displayed_position.load(Relaxed));
 
         // interpolation_data_snapshot: metric_data.interpolation_data().clone(),
-        // max_threshold: metric_data.metre_a().max.max(metric_data.metre_b().max),
         // displayed_position: params.displayed_position.clone(),
         // check_for_phase_reset_toggle: false,
 
@@ -173,8 +171,7 @@ pub(crate) fn create(
             interpolate_indisp,
             retain_metric_phase,
             // interpolation_data_snapshot: Signal::from(metric_data.interpolation_data().clone()),
-            // max_threshold: metric_data.metre_a().max.max(metric_data.metre_b().max),
-            // displayed_position: Signal::from(params.displayed_position.load(Relaxed)),
+            displayed_position,
             // check_for_phase_reset_toggle: false,
             last_input_is_valid,
             display_which_metre,
@@ -182,6 +179,8 @@ pub(crate) fn create(
             textbox_expanded,
             text_input_a,
             text_input_b,
+            max_threshold,
+            current_nr_beats,
         }
             .build(cx);
 
@@ -194,7 +193,9 @@ pub(crate) fn create(
         let binding_params = params.clone();
 
        Binding::new(cx, screen, move |cx| {
-           let binding_params = binding_params.clone();
+           let binding_params1 = binding_params.clone();
+           let binding_params2 = binding_params.clone();
+
            match screen.get() {
                MetreFiddlerScreen::Settings => {
                    settings_window(cx);
@@ -202,7 +203,12 @@ pub(crate) fn create(
                MetreFiddlerScreen::Main => {
                    // Upper Part of the Plugin
                    VStack::new(cx,  move |cx| {
-                       upper_part(cx);
+                       upper_part(cx,
+                                  binding_params1.clone(),
+                                  many_velocities,
+                                  max_threshold,
+                                  current_nr_beats,
+                                  displayed_position);
                    })
                        .height(Stretch(3.0));
                    // Lower Part of the Plugin
@@ -210,7 +216,7 @@ pub(crate) fn create(
                               text_input_a,
                               text_input_b,
                               screen,
-                              binding_params.clone(),
+                              binding_params2.clone(),
                               display_which_metre,
                               display_validity,
                               last_input_is_valid,
@@ -289,7 +295,7 @@ fn settings_window(cx: &mut Context) {
     // Settings Icon
     HStack::new(cx, |cx| {
         ZStack::new(cx, |cx| {
-            Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0)).cursor(CursorIcon::Hand).background_color(Color::black());
+            Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0)).cursor(CursorIcon::Hand).fill(Color::black());
         })
             .hoverable(true)
             .on_press(|cx|cx.emit(SetScreen(MetreFiddlerScreen::Main)))
@@ -313,123 +319,130 @@ fn settings_divider(cx: &mut Context) {
 }
 
 // Upper Part of the Plugin
-fn upper_part(cx: &mut Context) {
-    // HStack::new(cx, |cx| {
-    //     // The Velocity Sliders
-    //     VStack::new(cx, |cx| {
-    //         HStack::new(cx, |cx| {
-    //             Element::new(cx)
-    //                 .width(Pixels(10.0));
-    //             // min vel
-    //             VStack::new(cx, |cx| {
-    //                 ParamSliderV::new(cx, &params.velocity_min)
-    //                     .set_style(Scaled {factor: 1});
-    //                 Label::new(cx, "min");
-    //             })
-    //                 .padding_top(Pixels(20.0))
-    //                 .alignment(Alignment::Center);
-    //             // max vel
-    //             VStack::new(cx, |cx| {
-    //                 ParamSliderV::new(cx, &params.velocity_max)
-    //                     .set_style(Scaled {factor: 1});
-    //                 Label::new(cx, "max");
-    //             })
-    //                 .padding_top(Pixels(20.0))
-    //                 .alignment(Alignment::Center);
-    //             // Skew
-    //             VStack::new(cx, |cx| {
-    //                 ParamSliderKnob::new(cx, &params.velocity_skew)
-    //                     .set_vertical(true);
-    //                 Binding::new(cx, Data::settings, |cx, settings | {
-    //                     if settings.get(cx).many_velocities {
-    //                         Label::new(cx, "skew");
-    //                     } else {
-    //                         // many ugly bindings because I can't directly bind to params.current_nr_of_beats.
-    //                         Binding::new(cx, Data::text_input_a, |cx, _| {
-    //                             Binding::new(cx, Data::text_input_b, |cx, _| {
-    //                                 ParamBinding::new(cx, Data::params, |params| &params.interpolate_a_b,
-    //                                                   |cx, _| {
-    //                                                       let nr_beats = &params.get(cx).current_nr_of_beats.load(Acquire) as f32;
-    //                                                       ParamLabel::new(cx, &params.velocity_skew, move |skew| {
-    //                                                           ((skew * nr_beats).round() as usize).to_string()
-    //                                                       })
-    //                                                           .alignment(Alignment::Center);
-    //                                                   });
-    //                             });
-    //                         });
-    //                     }
-    //                 });
-    //             })
-    //                 .padding_top(Pixels(20.0))
-    //                 .alignment(Alignment::Center);
-    //
-    //             Element::new(cx)
-    //                 .width(Pixels(10.0));
-    //         });
-    //
-    //         Label::new(cx, "Velocity")
-    //             .font_weight(FontWeightKeyword::Bold)
-    //             .padding_bottom(Pixels(20.0));
-    //     })
-    //         .alignment(Alignment::Center)
-    //         .width(Stretch(1.0));
-    //
-    //     // Middle Part (Name, Duration, Buttons)
-    //     VStack::new(cx, |cx| {
-    //         Element::new(cx)
-    //             .height(Pixels(25.0));
-    //         Label::new(cx, "MetreFiddler")
-    //             .font_family(vec![FamilyOwned::Named(String::from(NOTO_SANS))])
-    //             .font_weight(FontWeightKeyword::Thin)
-    //             .font_size(40.0)
-    //             .height(Pixels(50.0));
-    //
-    //         duration_position(cx);
-    //
-    //         Element::new(cx)
-    //             .height(Pixels(10.0));
-    //     })
-    //         .alignment(Alignment::Center)
-    //         .width(Stretch(2.0));
-    //
-    //     // The Threshold Sliders
-    //     VStack::new(cx, |cx| {
-    //         HStack::new(cx, |cx| {
-    //             Binding::new(cx, Data::max_threshold, |cx, max| {
-    //                 let max_val = max.get(cx);
-    //
-    //                 Element::new(cx)
-    //                     .width(Pixels(10.0));
-    //                 // min thresh
-    //                 VStack::new(cx, |cx| {
-    //                     ParamSliderV::new(cx, Data::params, |params|
-    //                         &params.lower_threshold)
-    //                         .set_style(Scaled {factor: max_val});
-    //                     Label::new(cx, "min");
-    //                 })
-    //                     .padding_top(Pixels(20.0))
-    //                     .alignment(Alignment::Center);
-    //                 // max thresh
-    //                 VStack::new(cx, |cx| {
-    //                     ParamSliderV::new(cx, Data::params, |params|
-    //                         &params.upper_threshold)
-    //                         .set_style(Scaled { factor: max_val });
-    //                     Label::new(cx, "max");
-    //                 })
-    //                     .padding_top(Pixels(20.0))
-    //                     .alignment(Alignment::Center);
-    //                 Element::new(cx)
-    //                     .width(Pixels(10.0));
-    //             });
-    //         });
-    //
-    //         Label::new(cx, "Thresholds")
-    //             .font_weight(FontWeightKeyword::Bold)
-    //             .padding_bottom(Pixels(20.0));
-    //     })
-    //         .alignment(Alignment::Center)
-    //         .width(Stretch(1.0));
-    // });
+fn upper_part(cx: &mut Context,
+              params: Arc<MetreFiddlerParams>,
+              many_velocities: SyncSignal<bool>,
+              max_threshold: Signal<usize>,
+              current_nr_beats: Signal<usize>,
+              displayed_position: SyncSignal<f32>) {
+    let velocity_params = Arc::clone(&params);
+    let threshold_params = Arc::clone(&params);
+    let duration_params = Arc::clone(&params);
+
+    HStack::new(cx, move |cx| {
+        // The Velocity Sliders
+        VStack::new(cx, move |cx| {
+            HStack::new(cx, |cx| {
+                Element::new(cx)
+                    .width(Pixels(10.0));
+                // min vel
+                VStack::new(cx, |cx| {
+                    ParamSliderV::new(cx, &velocity_params.velocity_min)
+                        .set_style(Scaled {factor: 1});
+                    Label::new(cx, "min");
+                })
+                    .padding_top(Pixels(20.0))
+                    .alignment(Alignment::Center);
+                // max vel
+                VStack::new(cx, |cx| {
+                    ParamSliderV::new(cx, &velocity_params.velocity_max)
+                        .set_style(Scaled {factor: 1});
+                    Label::new(cx, "max");
+                })
+                    .padding_top(Pixels(20.0))
+                    .alignment(Alignment::Center);
+                // Skew
+                VStack::new(cx, |cx| {
+                    ParamSliderKnob::new(cx, &velocity_params.velocity_skew)
+                        .set_vertical(true);
+                    let skew_label_params = Arc::clone(&velocity_params);
+                    Binding::new(cx, many_velocities, move |cx | {
+                        if many_velocities.get() {
+                            Label::new(cx, "skew");
+                        } else {
+                            // This callback is also `Fn`, so clone here rather
+                            // than moving its captured `Arc` into the child.
+                            let params_for_beat_label = Arc::clone(&skew_label_params);
+                            Binding::new(cx, current_nr_beats, move |cx| {
+                                // TODO does this need a parambinding on interpolate_a_b?
+                                let nr_beats = params_for_beat_label.current_nr_of_beats.load(Acquire) as f32;
+
+                                ParamLabel::new(cx, &params_for_beat_label.velocity_skew, move |skew: f32| {
+                                    ((skew * nr_beats).round() as usize).to_string()
+                                })
+                                    .alignment(Alignment::Center);
+                            });
+                        }
+                    });
+                })
+                    .padding_top(Pixels(20.0))
+                    .alignment(Alignment::Center);
+
+                Element::new(cx)
+                    .width(Pixels(10.0));
+            });
+
+            Label::new(cx, "Velocity")
+                .font_weight(FontWeightKeyword::Bold)
+                .padding_bottom(Pixels(20.0));
+        })
+            .alignment(Alignment::Center)
+            .width(Stretch(1.0));
+
+        // Middle Part (Name, Duration, Buttons)
+        VStack::new(cx, move |cx| {
+            Element::new(cx)
+                .height(Pixels(25.0));
+            Label::new(cx, "MetreFiddler")
+                .font_family(vec![FamilyOwned::Named(String::from(NOTO_SANS))])
+                .font_weight(FontWeightKeyword::Thin)
+                .font_size(40.0)
+                .height(Pixels(50.0));
+
+            duration_position(cx, Arc::clone(&duration_params), displayed_position);
+
+            Element::new(cx)
+                .height(Pixels(10.0));
+        })
+            .alignment(Alignment::Center)
+            .width(Stretch(2.0));
+
+        // The Threshold Sliders
+        VStack::new(cx, move |cx| {
+            HStack::new(cx, |cx| {
+                Binding::new(cx, max_threshold, move |cx| {
+                    let max_val = max_threshold.get();
+
+                    Element::new(cx)
+                        .width(Pixels(10.0));
+                    // min thresh
+                    VStack::new(cx, |cx| {
+                        ParamSliderV::new(cx, &threshold_params.lower_threshold)
+                            .set_style(Scaled {factor: max_val});
+                        Label::new(cx, "min");
+                    })
+                        .padding_top(Pixels(20.0))
+                        .alignment(Alignment::Center);
+                    // max thresh
+                    VStack::new(cx, |cx| {
+                        ParamSliderV::new(cx, &threshold_params.upper_threshold)
+                            .set_style(Scaled { factor: max_val });
+                        Label::new(cx, "max");
+                    })
+                        .padding_top(Pixels(20.0))
+                        .alignment(Alignment::Center);
+                    Element::new(cx)
+                        .width(Pixels(10.0));
+                });
+            });
+
+            Label::new(cx, "Thresholds")
+                .font_weight(FontWeightKeyword::Bold)
+                .padding_bottom(Pixels(20.0));
+        })
+            .alignment(Alignment::Center)
+            .width(Stretch(1.0));
+    });
 }
 
 // Lower Part of the Plugin, containing the Metre Definition
@@ -556,7 +569,7 @@ fn lower_part(cx: &mut Context,
                 // Settings
                 HStack::new(cx, |cx| {
                     ZStack::new(cx, |cx| {
-                        Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0));
+                        Svg::new(cx, ICON_SETTINGS).width(Stretch(1.0)).height(Stretch(1.0)).fill(Color::black());
                     })
                         .hoverable(true)
                         .on_press(|cx|cx.emit(SetScreen(MetreFiddlerScreen::Settings)))
@@ -573,4 +586,143 @@ fn lower_part(cx: &mut Context,
             .alignment(Alignment::TopCenter)
             .height(Stretch(2.0));
     });
+}
+
+
+fn duration_position(cx: &mut Context, params: Arc<MetreFiddlerParams>, displayed_position: SyncSignal<f32>) {
+    let duration_content_params = Arc::clone(&params);
+    let position_params = Arc::clone(&params);
+
+    VStack::new(cx, move |cx| {
+
+        // Duration
+        ParamBinding::new(
+            cx,
+            &params.use_position,
+            move |cx, use_pos| {
+                let duration_params = Arc::clone(&duration_content_params);
+
+                ZStack::new(cx, move |cx| {
+                    // Label that changes according to Parameter
+                    VStack::new(cx, |cx| {
+                        ParamLabel::new(
+                            cx,
+                            &duration_params.use_bpm,
+                            |param: f32| {
+                                if param < 0.5 {
+                                    String::from("Duration in Seconds")
+                                } else {
+                                    String::from("Duration in Quarter Notes")
+                                }
+                            },
+                        )
+                            .alignment(Alignment::BottomCenter)
+                            .font_weight(FontWeightKeyword::Bold);
+
+                        ParamSlider::new(cx, &duration_params.metric_dur_selector)
+                            .width(Pixels(200.0));
+
+                        HStack::new(cx, |cx| {
+                            // BPM Toggle
+                            ParamButton::new(cx, &duration_params.use_bpm)
+                                .class("red_button")
+                                .with_label("  Use BPM")
+                                .width(Pixels(100.0));
+                            // Reset Phase
+                            Button::new(
+                                cx,
+                                |cx| Label::new(cx, "reset phase"))
+                                .on_press(|cx| {
+                                    cx.emit(TriggerPhaseReset);
+                                })
+                                .width(Pixels(100.0));
+                        })
+                            .alignment(Alignment::Center)
+                            .top(Pixels(10.0));
+                    })
+                        .alignment(Alignment::TopCenter);
+
+                    // Hide Duration Gui when using the position slider
+                    if use_pos > 0.5 {
+                        Element::new(cx)
+                            .background_color(RGBA::rgba(250, 250, 250, 255))
+                            .opacity(1.0);
+                    }
+                })
+                    .alignment(Alignment::Center);
+            })
+            .height(Stretch(0.4))
+            .alignment(Alignment::Center);
+
+        // Position
+        VStack::new(cx, move |cx| {
+            let position_toggle_params = Arc::clone(&position_params);
+            HStack::new(cx, move |cx| {
+                // Switch between Duration and Position
+                ParamButton::new(cx, &position_toggle_params.use_position)
+                    .class("red_button")
+                    .with_label("Use")
+                    .height(Pixels(20.0))
+                    .width(Pixels(40.0));
+
+                Label::new(
+                    cx,
+                    "  Position within Measure"
+                )
+                    .font_weight(FontWeightKeyword::Bold);
+            })
+                .alignment(Alignment::Center);
+
+            let position_view_params = Arc::clone(&position_params);
+            ZStack::new(cx, move |cx| {
+                // TODO
+                // The ticks on the position bar
+                // VStack::new(cx, |cx| {
+                //     Binding::new(cx, interpolate_durations,|cx| {
+                //         ParamBinding::new(
+                //             cx,
+                //             &params.interpolate_a_b,
+                //             move |cx, interpolate| {
+                //                 ParamTicks::new(
+                //                     cx,
+                //                     200.0,
+                //                     interpolation_data_snapshot,
+                //                     interpolate,
+                //                     interpolate_durations)
+                //                     .height(Pixels(20.0));
+                //             }).alignment(Alignment::Center);
+                //     });
+                // })
+                //     .alignment(Alignment::Center);
+
+                VStack::new(cx, |cx| {
+                    // TODO explore, whether parambinding can be replaced with a binding to param.unmodulated_signal or similar
+                    let position_slider_params = Arc::clone(&position_view_params);
+                    ParamBinding::new(
+                        cx,
+                        &position_view_params.use_position,
+                        move |cx, use_pos| {
+                            let display_pos = use_pos < 0.5;
+
+                            if display_pos {
+                                ParamDisplayKnob::new(
+                                    cx,
+                                    displayed_position)
+                                    .height(Pixels(20.0))
+                                    .width(Pixels(200.0));
+                            } else {
+                                ParamSliderKnob::new(cx, &position_slider_params.bar_position)
+                                    .height(Pixels(20.0))
+                                    .width(Pixels(200.0));
+                            }
+                        })
+                        .alignment(Alignment::Center);
+                })
+                    .alignment(Alignment::Center);
+            });
+        })
+            .alignment(Alignment::TopCenter)
+            .height(Stretch(0.2));
+     })
+         .alignment(Alignment::Center);
 }

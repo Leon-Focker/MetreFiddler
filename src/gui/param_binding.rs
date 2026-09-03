@@ -1,34 +1,26 @@
-use nice_plug::params::Param;
+use nice_plug::prelude::*;
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::param_base::ParamWidgetBase;
 
-#[derive(Lens)]
 pub struct ParamBinding {}
 
 impl ParamBinding {
-    pub fn new<L, Params, P, FMap, F>(
-        cx: &mut Context,
-        params: L,
-        params_to_param: FMap,
-        content: F
-    ) -> Handle<'_, Self>
+    pub fn new<'c, 'p, P, F>(cx: &'c mut Context, param: &'p P, content: F) -> Handle<'c, Self>
     where
-        L: Lens<Target = Params> + Clone,
-        Params: 'static,
+        'p: 'c,
         P: Param + 'static,
-        FMap: Fn(&Params) -> &P + Copy + 'static,
         F: Fn(&mut Context, f32) + 'static,
     {
+        let param_base = ParamWidgetBase::new(cx, param);
+        
         Self {}
             .build(
                 cx,
-                ParamWidgetBase::build_view(params, params_to_param, move |cx, param_data| {
-                    let param_value =
-                        param_data.make_lens(|param| param.unmodulated_normalized_value());
+                ParamWidgetBase::build_view(param, move |cx, param_data| {
+                    let param_value = param_base.unmodulated_signal(cx);
                     
-                    Binding::new(cx, param_value, move |cx, param| {
-                        let test = param.get(cx);
-                        content(cx, test);
+                    Binding::new(cx, param_value, move |cx| {
+                        content(cx, param_value.get());
                     });
                 }),
             )

@@ -6,11 +6,11 @@ pub struct ParamLabel {
 }
 
 impl ParamLabel {
-    pub fn new<'c, 'p, P, L, T>(cx: &'c mut Context, param: &'p P, label_fn: L) -> Handle<'c, Self>
+    pub fn new<'c, 'p, P, L>(cx: &'c mut Context, param: &'p P, label_fn: L) -> Handle<'c, Self>
     where
         'p: 'c,
         P: Param + 'static,
-        L: 'static + Fn(T) -> String,
+        L: 'static + Fn(f32) -> String,
     {
         let param_base = ParamWidgetBase::new(cx, param);
 
@@ -19,9 +19,12 @@ impl ParamLabel {
                 cx,
                 ParamWidgetBase::build_view(param, move |cx, _param_data| {
                     let unmodulated_signal = param_base.unmodulated_signal(cx);
-                    Label::new(cx, unmodulated_signal)
-                        .left(Stretch(1.0))
-                        .right(Stretch(1.0));
+
+                    Binding::new(cx, unmodulated_signal, move|cx| {
+                        Label::new(cx, label_fn(unmodulated_signal.get()))
+                            .left(Stretch(1.0))
+                            .right(Stretch(1.0));
+                    });
                 }),
             )
     }

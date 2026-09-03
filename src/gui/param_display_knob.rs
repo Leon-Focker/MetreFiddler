@@ -1,4 +1,4 @@
-use nice_plug::params::Param;
+use nice_plug::prelude::*;
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::param_base::ParamWidgetBase;
 // This is a modified copy of nih-plugs param_slider.rs
@@ -9,7 +9,6 @@ use vizia_plug::widgets::param_base::ParamWidgetBase;
 
 /// A slider that integrates with NIH-plug's [`Param`] types. Use the
 /// [`set_style()`][ParamSliderExt::set_style()] method to change how the value gets displayed.
-#[derive(Lens)]
 #[allow(dead_code)]
 pub struct ParamDisplayKnob {
     /// A specific label to use instead of displaying the parameter's value.
@@ -19,22 +18,23 @@ pub struct ParamDisplayKnob {
 }
 
 impl ParamDisplayKnob {
-    pub fn new<L>(
+    pub fn new(
         cx: &mut Context,
-        value: L,
+        value: SyncSignal<f32>,
     ) -> Handle<'_, Self>
-    where
-        L: Lens<Target = f32>
     {
+        let vertical = false;
+
         Self {
             label_override: None,
-            vertical: false,
+            vertical,
         }
             .build(
                 cx,
                 |cx| {
-                    Binding::new(cx, ParamDisplayKnob::vertical, move |cx, vertical| {
-                        let vertical = vertical.get(cx);
+                    // TODO
+                    // Binding::new(cx, vertical, move |cx| {
+                        let vertical = vertical;
                         
                         ZStack::new(cx, |cx| {
                             Self::slider_bar(
@@ -48,7 +48,7 @@ impl ParamDisplayKnob {
                             );
                         })
                             .hoverable(false);
-                    });
+                    //});
                 }
             )
             // To override the css styling:
@@ -89,7 +89,7 @@ impl ParamDisplayKnob {
     fn slider_fill_view(
         cx: &mut Context,
         vertical: bool,
-        fill_start_delta_lens: impl Lens<Target = f32>,
+        fill_start_delta_lens: SyncSignal<f32>,
     ) {
         if vertical {
             VStack::new(cx, |cx| {
