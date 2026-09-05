@@ -15,7 +15,7 @@ use crate::gui::settings_button::{SettingsButton, SettingsButtonModifiers};
 use crate::gui::metre_input::{MetreAorB, MetreInput};
 use crate::gui::metre_input::MetreAorB::{MetreA, MetreB};
 use crate::gui::param_binding::ParamBinding;
-use crate::gui::param_display_knob::ParamDisplayKnob;
+use crate::gui::display_knob::DisplayKnob;
 use crate::gui::param_ticks::ParamTicks;
 use crate::metre::interpolation::interpolation_data::InterpolationData;
 use crate::metre::metre_data::MetreData;
@@ -705,7 +705,7 @@ fn duration_position(cx: &mut Context, params: Arc<MetreFiddlerParams>, displaye
                             let display_pos = use_pos < 0.5;
 
                             if display_pos {
-                                ParamDisplayKnob::new(
+                                DisplayKnob::new(
                                     cx,
                                     displayed_position)
                                     .height(Pixels(20.0))

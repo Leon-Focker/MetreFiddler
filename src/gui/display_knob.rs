@@ -4,26 +4,23 @@ use vizia_plug::widgets::param_base::ParamWidgetBase;
 // This is a modified copy of nih-plugs param_slider.rs
 // ! A slider that integrates with NIH-plug's [`Param`] types.
 
-
-// TODO this is a lot of repeated code from param_slider_knob...
-
 /// A slider that integrates with NIH-plug's [`Param`] types. Use the
 /// [`set_style()`][ParamSliderExt::set_style()] method to change how the value gets displayed.
 #[allow(dead_code)]
-pub struct ParamDisplayKnob {
+pub struct DisplayKnob {
     /// A specific label to use instead of displaying the parameter's value.
     label_override: Option<String>,
     /// Whether the widget is drawn vertical or horizontal.
-    vertical: bool,
+    vertical: Signal<bool>,
 }
 
-impl ParamDisplayKnob {
+impl DisplayKnob {
     pub fn new(
         cx: &mut Context,
         value: SyncSignal<f32>,
     ) -> Handle<'_, Self>
     {
-        let vertical = false;
+        let vertical = Signal::from(false);
 
         Self {
             label_override: None,
@@ -32,9 +29,8 @@ impl ParamDisplayKnob {
             .build(
                 cx,
                 |cx| {
-                    // TODO
-                    // Binding::new(cx, vertical, move |cx| {
-                        let vertical = vertical;
+                     Binding::new(cx, vertical, move |cx| {
+                        let vertical = vertical.get();
                         
                         ZStack::new(cx, |cx| {
                             Self::slider_bar(
@@ -48,7 +44,7 @@ impl ParamDisplayKnob {
                             );
                         })
                             .hoverable(false);
-                    //});
+                    });
                 }
             )
             // To override the css styling:
@@ -133,7 +129,7 @@ impl ParamDisplayKnob {
     }
 }
 
-impl View for ParamDisplayKnob {
+impl View for DisplayKnob {
     fn element(&self) -> Option<&'static str> {
         Some("param-slider")
     }
@@ -146,8 +142,8 @@ pub trait ParamDisplayKnobExt {
     fn set_vertical(self, value: bool) -> Self;
 }
 
-impl ParamDisplayKnobExt for Handle<'_, ParamDisplayKnob> {
+impl ParamDisplayKnobExt for Handle<'_, DisplayKnob> {
     fn set_vertical(self, value: bool) -> Self {
-        self.modify(|param_slider: &mut ParamDisplayKnob| param_slider.vertical = value)
+        self.modify(|param_slider: &mut DisplayKnob| param_slider.vertical.update(|b| *b = value))
     }
 }
