@@ -18,10 +18,10 @@ impl ParamLabel {
             .build(
                 cx,
                 ParamWidgetBase::build_view(param, move |cx, _param_data| {
-                    let unmodulated_signal = param_base.unmodulated_signal(cx);
+                    let modulated_signal = param_base.modulated_signal(cx);
 
-                    Binding::new(cx, unmodulated_signal, move|cx| {
-                        Label::new(cx, label_fn(unmodulated_signal.get()))
+                    Binding::new(cx, modulated_signal, move|cx| {
+                        Label::new(cx, label_fn(modulated_signal.get()))
                             .left(Stretch(1.0))
                             .right(Stretch(1.0));
                     });

@@ -33,7 +33,7 @@ pub struct ParamSliderKnob {
     /// A specific label to use instead of displaying the parameter's value.
     label_override: Option<String>,
     /// Whether the widget is drawn vertical or horizontal.
-    vertical: bool,
+    vertical: Signal<bool>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -53,9 +53,8 @@ impl ParamSliderKnob {
         P: Param + 'static,
     {
         let param_base = ParamWidgetBase::new(cx, param);
-        let unmodulated_signal = param_base.unmodulated_signal(cx);
         let modulated_signal = param_base.modulated_signal(cx);
-        let vertical = false;
+        let vertical = Signal::from(false);
 
         Self {
             param_base,
@@ -71,30 +70,32 @@ impl ParamSliderKnob {
             .build(
                 cx,
                 ParamWidgetBase::build_view(param, move |cx, param_data| {
-                    let vertical = vertical;
+                    Binding::new(cx, vertical, move |cx| {
+                        let vertical = vertical.get();
 
-                    // The resulting tuple `(start_t, delta)` corresponds to the start and the
-                    // signed width of the bar. `start_t` is in `[0, 1]`, and `delta` is in
-                    // `[-1, 1]`.
-                    let fill_start_delta: Memo<(f32, f32)> = Memo::new(move |_| {
-                        let current = unmodulated_signal.get();
-                        Self::compute_fill_start_delta(
-                            current,
-                        )
+                        // The resulting tuple `(start_t, delta)` corresponds to the start and the
+                        // signed width of the bar. `start_t` is in `[0, 1]`, and `delta` is in
+                        // `[-1, 1]`.
+                        let fill_start_delta: Memo<(f32, f32)> = Memo::new(move |_| {
+                            let current = modulated_signal.get();
+                            Self::compute_fill_start_delta(
+                                current,
+                            )
+                        });
+
+                        ZStack::new(cx, |cx| {
+                            Self::slider_bar(
+                                cx,
+                                vertical,
+                            );
+                            Self::slider_fill_view(
+                                cx,
+                                vertical,
+                                fill_start_delta,
+                            );
+                        })
+                            .hoverable(false);
                     });
-
-                    ZStack::new(cx, |cx| {
-                        Self::slider_bar(
-                            cx,
-                            vertical,
-                        );
-                        Self::slider_fill_view(
-                            cx,
-                            vertical,
-                            fill_start_delta,
-                        );
-                    })
-                        .hoverable(false);
                 }),
             )
             // To override the css styling:
@@ -176,26 +177,6 @@ impl ParamSliderKnob {
                 .padding_right(Pixels(-5.0))
                 .padding_left(Pixels(5.0));
         }
-        
-        // If the parameter is being modulated, then we'll display another
-        // filled bar showing the current modulation delta
-        // VIZIA's bindings make this a bit, uh, difficult to read
-        // Element::new(cx)
-        //     .class("fill")
-        //     .class("fill--modulation")
-        //     .width(Stretch(1.0))
-        //     .visibility(modulation_start_delta_lens.map(|(_, delta)| *delta != 0.0))
-        //     // Widths cannot be negative, so we need to compensate the start
-        //     // position if the width does happen to be negative
-        //     .height(modulation_start_delta_lens.map(|(_, delta)| Percentage(delta.abs() * 100.0)))
-        //     .top(modulation_start_delta_lens.map(|(start_t, delta)| {
-        //         if *delta < 0.0 {
-        //             Percentage((start_t + delta) * 100.0)
-        //         } else {
-        //             Percentage(start_t * 100.0)
-        //         }
-        //     }))
-        //     .hoverable(false);
     }
 
     fn compute_fill_start_delta(
@@ -250,7 +231,7 @@ impl View for ParamSliderKnob {
                     self.param_base.begin_set_parameter(cx);
                     if cx.modifiers().shift() {
                         self.granular_drag_status = Some(GranularDragStatus {
-                            starting_coordinate: if self.vertical {
+                            starting_coordinate: if self.vertical.get() {
                                 cx.mouse().cursor_y
                             } else {
                                 cx.mouse().cursor_x
@@ -261,7 +242,7 @@ impl View for ParamSliderKnob {
                         self.granular_drag_status = None;
                         self.set_normalized_value_drag(
                             cx,
-                            if self.vertical {
+                            if self.vertical.get() {
                                 1.0 - util::remap_current_entity_y_coordinate(cx, cx.mouse().cursor_y)
                             } else {
                                 util::remap_current_entity_x_coordinate(cx, cx.mouse().cursor_x)     
@@ -305,13 +286,13 @@ impl View for ParamSliderKnob {
                             *self
                                 .granular_drag_status
                                 .get_or_insert_with(|| GranularDragStatus {
-                                    starting_coordinate: if self.vertical {*y} else {*x},
+                                    starting_coordinate: if self.vertical.get() {*y} else {*x},
                                     starting_value: self.param_base.unmodulated_normalized_value(),
                                 });
 
                         // These positions should be compensated for the DPI scale so it remains
                         // consistent
-                        if self.vertical {
+                        if self.vertical.get() {
                             let start_y =
                                 util::remap_current_entity_y_t(cx, granular_drag_status.starting_value);
                             let delta_y = ((*y - granular_drag_status.starting_coordinate)
@@ -340,7 +321,7 @@ impl View for ParamSliderKnob {
 
                         self.set_normalized_value_drag(
                             cx,
-                            if self.vertical {
+                            if self.vertical.get() {
                                 1.0 - util::remap_current_entity_y_coordinate(cx, *y)
                             } else {
                                 util::remap_current_entity_x_coordinate(cx, *x)      
@@ -356,7 +337,7 @@ impl View for ParamSliderKnob {
                     self.granular_drag_status = None;
                     self.param_base.set_normalized_value(
                         cx,
-                        if self.vertical {
+                        if self.vertical.get() {
                             1.0 - util::remap_current_entity_y_coordinate(cx, cx.mouse().cursor_y)
                         } else {
                             util::remap_current_entity_x_coordinate(cx, cx.mouse().cursor_x)
@@ -415,6 +396,6 @@ pub trait ParamSliderKnobExt {
 
 impl ParamSliderKnobExt for Handle<'_, ParamSliderKnob> {
     fn set_vertical(self, value: bool) -> Self {
-        self.modify(|param_slider: &mut ParamSliderKnob| param_slider.vertical = value)
+        self.modify(|param_slider: &mut ParamSliderKnob| param_slider.vertical.update(|b| *b = value))
     }
 }
