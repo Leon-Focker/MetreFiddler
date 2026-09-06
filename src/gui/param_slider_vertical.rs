@@ -60,12 +60,14 @@ pub enum ParamSliderStyle {
     /// The same as `CurrentStep`, but overlay the labels over the steps instead of showing the
     /// active value. Only useful for discrete parameters with two, maybe three possible values.
     CurrentStepLabeled { even: bool },
-    /// like FromLeft but scale the displayed value by this.
+    /// Like FromLeft but scale and round the displayed value. This is needed because the Range
+    /// of an "IntParam" cannot easily be changed. Instead, a "FloatParam" can be used  and scaled
+    /// with different factors.
     Scaled { factor: usize },
 }
 
 enum ParamSliderEvent {
-    /// Text input has been cancelled without submitting a new value.
+    /// Text input has been canceled without submitting a new value.
     CancelTextInput,
     /// A new value has been sent by the text input dialog after pressing Enter.
     TextInput(String),
@@ -117,8 +119,17 @@ impl ParamSliderV {
                         // SAFETY for the `ParamPtr` read: resolved from a valid `&impl Param` at
                         // widget construction; the pointer stays valid for the plugin's lifetime.
                         let display_value: Memo<String> = Memo::new(move |_| {
-                            let current = unmodulated_signal.get();
-                            unsafe { param_ptr.normalized_value_to_string(current, true) }
+                            match style {
+                                ParamSliderStyle::Scaled { factor: x } => {
+                                    // We need this to circumvent the Range of the Param
+                                    let current = unmodulated_signal.get();
+                                    (current * x as f32).round().to_string()
+                                },
+                                _ => {
+                                    let current = unmodulated_signal.get();
+                                    unsafe { param_ptr.normalized_value_to_string(2.0 * current, true) }
+                                },
+                            }
                         });
 
                         // `(start_t, delta)` for the filled portion of the bar. `start_t ∈ [0, 1]`,
@@ -161,6 +172,12 @@ impl ParamSliderV {
                                         display_value,
                                         label_override,
                                     );
+                                    // Re-Draw borders over fill Element
+                                    Element::new(cx)
+                                        .width(Stretch(1.0))
+                                        .height(Stretch(1.0))
+                                        .border_color(Color::black())
+                                        .border_width(Pixels(1.0));
                                 })
                                     .hoverable(false);
                             }
@@ -208,11 +225,10 @@ impl ParamSliderV {
         // the current style property. See [`ParamSliderStyle`].
         Element::new(cx)
             .class("fill")
+            .position_type(PositionType::Absolute)
             .background_color(RGBA::rgb(196, 196, 196))
             .width(Stretch(1.0))
-            // TODO slider starts from bottom, not top:
-            .top(fill_start_delta.map(|(_start_t, delta)| Percentage((1.0 - delta) * 100.0)))
-            //.top(fill_start_delta_lens.map(|(start_t, _)| Percentage(start_t* 100.0)))
+            .bottom(fill_start_delta.map(|(start_t, _)| Percentage(start_t* 100.0)))
             .height(fill_start_delta.map(|(_, delta)| Percentage(delta * 100.0)))
             // Hovering is handled on the param slider as a whole, this
             // should not affect that
@@ -416,7 +432,15 @@ impl View for ParamSliderV {
                 meta.consume();
             }
             ParamSliderEvent::TextInput(string) => {
-                if let Some(normalized_value) = self.param_base.string_to_normalized_value(string) {
+                let normalized_value = match self.style.get() {
+                    ParamSliderStyle::Scaled { factor } => {
+                        string.parse::<f32>().ok()
+                            .map(|val| (val / factor as f32).clamp(0.0, 1.0))
+                    }
+                    _ => self.param_base.string_to_normalized_value(string),
+                };
+
+                if let Some(normalized_value) = normalized_value {
                     self.param_base.begin_set_parameter(cx);
                     self.param_base.set_normalized_value(cx, normalized_value);
                     self.param_base.end_set_parameter(cx);
