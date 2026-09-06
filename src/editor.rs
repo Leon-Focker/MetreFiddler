@@ -1,10 +1,11 @@
-use nice_plug::prelude::{util, Editor};
+use nice_plug::prelude::{Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
 use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
 use vizia_plug::vizia::icons::ICON_SETTINGS;
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+use nice_plug::nice_log;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::*;
 use crate::gui::param_label::ParamLabel;
@@ -12,13 +13,14 @@ use crate::gui::param_slider_knob::{ParamSliderKnob, ParamSliderKnobExt};
 use crate::gui::param_slider_vertical::{ParamSliderV, ParamSliderVExt};
 use crate::gui::param_slider_vertical::ParamSliderStyle::Scaled;
 use crate::gui::settings_button::{SettingsButton, SettingsButtonModifiers};
-use crate::gui::metre_input::{MetreAorB, MetreInput};
-use crate::gui::metre_input::MetreAorB::{MetreA, MetreB};
 use crate::gui::param_binding::ParamBinding;
 use crate::gui::display_knob::DisplayKnob;
+use crate::gui::metre_input::MetreInput;
 use crate::gui::param_ticks::ParamTicks;
 use crate::metre::interpolation::interpolation_data::InterpolationData;
 use crate::metre::metre_data::MetreData;
+use crate::metre::metre_slot::MetreSlot;
+use crate::metre::metre_slot::MetreSlot::*;
 // TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and
 //  sometimes it doesn't. (only on linux)
 
@@ -46,9 +48,6 @@ const NEW_STYLE: &str = r#"
     }
 "#;
 
-
-
-
 pub(crate) struct AppData {
     pub(crate) params: Arc<MetreFiddlerParams>,
     // settings
@@ -59,16 +58,16 @@ pub(crate) struct AppData {
     pub retain_metric_phase: SyncSignal<bool>,
     // others
     pub(crate) screen: Signal<MetreFiddlerScreen>,
+    pub(crate) displayed_position: SyncSignal<f32>,
+    pub(crate) interpolation_data_snapshot: SyncSignal<InterpolationData>,
     pub(crate) last_input_is_valid: Signal<String>,
-    pub(crate) display_which_metre: Signal<MetreAorB>,
+    pub(crate) display_which_metre: Signal<MetreSlot>,
     pub(crate) display_validity: Signal<bool>,
     pub(crate) textbox_expanded: Signal<bool>,
     pub(crate) text_input_a: Signal<String>,
     pub(crate) text_input_b: Signal<String>,
     pub(crate) max_threshold: Signal<usize>,
     pub(crate) current_nr_beats: Signal<usize>,
-    // pub(crate) interpolation_data_snapshot: Signal<InterpolationData>,
-    pub(crate) displayed_position: SyncSignal<f32>,
     // pub(crate) check_for_phase_reset_toggle: Signal<bool>,   // this is toggled for every frame until the phase_reset button has been reset
 }
 
@@ -81,7 +80,7 @@ pub(crate) enum MetreFiddlerScreen {
 
 #[derive(Debug, Clone)]
 pub(crate) enum MetreFiddlerEvent {
-    UpdateString(String, MetreAorB),
+    UpdateString(String, MetreSlot),
     SetScreen(MetreFiddlerScreen),
     ToggleInterpolateDurs,
     ToggleInterpolateIndisp,
@@ -99,6 +98,41 @@ pub(crate) enum MetreFiddlerEvent {
 impl Model for AppData {
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|my_event, _meta| match my_event {
+            UpdateString(new_text, slot) => {
+                match MetreData::try_from(new_text.as_str()) {
+                    Ok(new_metre_data) => {
+                        let mut metric_data = self.params.combined_metre_data.lock().unwrap();
+
+                        match slot {
+                            MetreA => {
+                                if self.text_input_a != *new_text {
+                                    self.text_input_a.update(|a| *a = new_text.clone());
+                                }
+                                metric_data.set_metre_a(new_metre_data);
+                            },
+                            _ => {
+                                if self.text_input_b != *new_text {
+                                    self.text_input_b.update(|a| *a = new_text.clone());
+                                }
+                                metric_data.set_metre_b(new_metre_data);
+                            },
+                        }
+
+                        self.max_threshold.update(|a| *a = metric_data.metre_a().max.max(metric_data.metre_b().max));
+                        self.interpolation_data_snapshot.update(|a| *a = metric_data.interpolation_data().clone());
+                        self.last_input_is_valid.update(|a| *a = "✔️".to_string());
+                        if self.interpolate_durations.get() {
+                            self.params.current_nr_of_beats.store(metric_data.get_interpolated_durations(self.params.interpolate_a_b.value()).count(), Release);
+                        } else {
+                            self.params.current_nr_of_beats.store(metric_data.get_interleaved_durations(self.params.interpolate_a_b.value()).count(), Release);
+                        }
+                    },
+                    Err(err_string) => {
+                        nice_log!("Failed to parse string: '{}': {}", new_text, err_string);
+                        self.last_input_is_valid.update(|a| *a = "❌".to_string());
+                    },
+                }
+            }
             ToggleInterpolateDurs => {
                 self.params.interpolate_durations.store(!self.params.interpolate_durations.load(Relaxed), Relaxed);
                 self.interpolate_durations.update(|s| *s = !*s);
@@ -122,7 +156,42 @@ impl Model for AppData {
             SetScreen(screen) => {
                 self.screen.set(*screen);
             }
-            _ => ()
+            ToggleAB => {
+                self.display_which_metre.update(|m| *m = !*m)
+            }
+            TriggerPhaseReset => {
+                // TODO
+                // self.params.reset_info.store(true, Release);
+                // self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle;
+                //
+                // let param_ref = &self.params.reset_phase;
+                //
+                // cx.emit(ParamEvent::BeginSetParameter(param_ref).upcast());
+                // cx.emit(ParamEvent::SetParameter(param_ref, true).upcast());
+                // cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
+            }
+            RevertPhaseReset => {
+                // TODO
+                let param_ref = &self.params.reset_phase;
+
+                cx.emit(ParamEvent::BeginSetParameter(param_ref).upcast());
+                cx.emit(ParamEvent::SetParameter(param_ref, false).upcast());
+                cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
+            }
+            ToggleCheckForPhaseReset => {
+                // TODO
+                // if !self.params.reset_info.load(Acquire) {
+                //     cx.emit(RevertPhaseReset);
+                // } else {
+                //     self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle;
+                // }
+            }
+            ShowValidity(show) => {
+                self.display_validity.update(|s| *s = *show);
+            }
+            ExpandTextBox(expand) => {
+                self.textbox_expanded.update(|e| *e = *expand);
+            },
         });
     }
 }
@@ -143,6 +212,8 @@ pub(crate) fn create(
 
         // App Parameters
         let screen = Signal::from(MetreFiddlerScreen::Main);
+        let interpolation_data_snapshot = SyncSignal::from(metric_data.interpolation_data().clone());
+        let displayed_position = SyncSignal::from(params.displayed_position.load(Relaxed));
         let interpolate_durations = SyncSignal::from(params.interpolate_durations.load(Relaxed));
         let many_velocities = SyncSignal::from(params.many_velocities.load(Relaxed));
         let midi_out_one_note = SyncSignal::from(params.midi_out_one_note.load(Relaxed));
@@ -158,8 +229,6 @@ pub(crate) fn create(
         let current_nr_beats = Signal::from(0); // TODO
         let displayed_position = SyncSignal::from(params.displayed_position.load(Relaxed));
 
-        // interpolation_data_snapshot: metric_data.interpolation_data().clone(),
-        // displayed_position: params.displayed_position.clone(),
         // check_for_phase_reset_toggle: false,
 
         AppData {
@@ -173,6 +242,7 @@ pub(crate) fn create(
             // interpolation_data_snapshot: Signal::from(metric_data.interpolation_data().clone()),
             displayed_position,
             // check_for_phase_reset_toggle: false,
+            interpolation_data_snapshot,
             last_input_is_valid,
             display_which_metre,
             display_validity,
@@ -451,7 +521,7 @@ fn lower_part(cx: &mut Context,
               text_input_b: Signal<String>,
               screen: Signal<MetreFiddlerScreen>,
               params: Arc<MetreFiddlerParams>,
-              display_which_metre: Signal<MetreAorB>,
+              display_which_metre: Signal<MetreSlot>,
               display_validity: Signal<bool>,
               is_valid: Signal<String>,
               textbox_expanded: Signal<bool>) {
@@ -482,7 +552,7 @@ fn lower_part(cx: &mut Context,
                             Popover::new(cx, |cx| {
                                 match display_which_metre.get() {
                                     MetreA =>  MetreInput::new(cx, text_input_a, MetreA),
-                                    MetreB =>  MetreInput::new(cx, text_input_b, MetreB),
+                                    _ =>  MetreInput::new(cx, text_input_b, MetreB),
                                 };
                             })
                                 .lock_focus_to_within() // automatically move into popup textbox
@@ -492,7 +562,7 @@ fn lower_part(cx: &mut Context,
                         } else {
                             match display_which_metre.get() {
                                 MetreA =>  MetreInput::new(cx, text_input_a, MetreA),
-                                MetreB =>  MetreInput::new(cx, text_input_b, MetreB),
+                                _ =>  MetreInput::new(cx, text_input_b, MetreB),
                             };
                         }
                     });
@@ -536,7 +606,7 @@ fn lower_part(cx: &mut Context,
                                     |cx|
                                         match display_which_metre.get() {
                                             MetreA => Label::new(cx, "Switch to B"),
-                                            MetreB => Label::new(cx, "Switch to A"),
+                                            _ => Label::new(cx, "Switch to A"),
                                         }
                         )
                             .on_press(|cx| {
