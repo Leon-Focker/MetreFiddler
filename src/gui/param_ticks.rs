@@ -1,6 +1,6 @@
 use vizia_plug::vizia::prelude::*;
-use crate::metre::beat_origin::BeatOrigin;
-use crate::metre::beat_origin::BeatOrigin::Both;
+use crate::metre::metre_slot::MetreSlot;
+use crate::metre::metre_slot::MetreSlot::Both;
 use crate::metre::interpolation::interpolation_data::InterpolationData;
 use crate::util::{get_durations};
 
@@ -43,7 +43,7 @@ impl ParamTicks {
             // on top of each other...?
 
             let durations: Vec<f32>;
-            let opacity_ids: Vec<BeatOrigin>;
+            let opacity_ids: Vec<MetreSlot>;
 
             if interpolate_durs {
                 durations = interpolation_data.get_value(cx).get_interpolated_durations(interpolate).collect();
@@ -73,7 +73,7 @@ impl ParamTicks {
                     255
                 } else {
                     // calculate opacity (init_opacity -1.0 -> MetreA, 0.0 -> MetreB, 1.0 -> both)
-                    origin.to_opacity(interpolate)
+                    origin.calculate_opacity(interpolate)
                 };
                 let color: Color = Color::rgba(0,0,0, opacity);
 

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::metre::beat_origin::BeatOrigin;
+use crate::metre::metre_slot::MetreSlot;
 use crate::metre::interpolation::index_pairs::IndexPairs;
 use crate::util::{approx_eq, dry_wet, get_durations, get_start_times};
 
@@ -24,7 +24,7 @@ pub struct InterpolationData {
     interleaved_gnsm: Vec<usize>,
 
     unique_start_times: Vec<f32>,
-    unique_start_time_origins: Vec<BeatOrigin>,
+    unique_start_time_origins: Vec<MetreSlot>,
 }
 
 impl InterpolationData {
@@ -60,7 +60,7 @@ impl InterpolationData {
         &self.unique_start_times
     }
 
-    pub fn unique_start_time_origins(&self) -> &[BeatOrigin] {
+    pub fn unique_start_time_origins(&self) -> &[MetreSlot] {
         &self.unique_start_time_origins
     }
 
@@ -121,31 +121,31 @@ impl InterpolationData {
                 (Some(&a), Some(&b)) => {
                     if approx_eq(a, b, 0.001) {
                         unique_start_times.push(a);
-                        unique_start_time_origins.push(BeatOrigin::Both);
+                        unique_start_time_origins.push(MetreSlot::Both);
                         interleaved_gnsm.push(gnsm_a[i % gnsm_a.len()].max(gnsm_b[k % gnsm_b.len()]));
                         i += 1;
                         k += 1;
                     } else if a < b {
                         unique_start_times.push(a);
-                        unique_start_time_origins.push(BeatOrigin::MetreA);
+                        unique_start_time_origins.push(MetreSlot::MetreA);
                         interleaved_gnsm.push(gnsm_a[i % gnsm_a.len()]);
                         i += 1;
                     } else {
                         unique_start_times.push(b);
-                        unique_start_time_origins.push(BeatOrigin::MetreB);
+                        unique_start_time_origins.push(MetreSlot::MetreB);
                         interleaved_gnsm.push(gnsm_b[k % gnsm_b.len()]);
                         k += 1;
                     }
                 }
                 (Some(&a), None) => {
                     unique_start_times.push(a);
-                    unique_start_time_origins.push(BeatOrigin::MetreA);
+                    unique_start_time_origins.push(MetreSlot::MetreA);
                     interleaved_gnsm.push(gnsm_a[i % gnsm_a.len()]);
                     i += 1;
                 }
                 (None, Some(&b)) => {
                     unique_start_times.push(b);
-                    unique_start_time_origins.push(BeatOrigin::MetreB);
+                    unique_start_time_origins.push(MetreSlot::MetreB);
                     interleaved_gnsm.push(gnsm_b[k % gnsm_b.len()]);
                     k += 1;
                 }

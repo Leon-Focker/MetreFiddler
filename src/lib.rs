@@ -1,8 +1,8 @@
 use nice_plug::prelude::*;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
-use crate::metre::beat_origin::BeatOrigin;
-use crate::metre::beat_origin::BeatOrigin::*;
+use crate::metre::metre_slot::MetreSlot;
+use crate::metre::metre_slot::MetreSlot::*;
 use crate::metre::metric_phase::MetricPhase;
 use crate::params::{MetreFiddlerParams, ParamsSnapShot};
 use crate::util::{dry_wet, rescale};
@@ -126,7 +126,7 @@ impl MetreFiddler {
     /// return a tuple with the index of the current beat, the normalized duration up until that beat,
     /// the indispensability value for that beat, whether the thresholds would currently let
     /// a note through and the Origin of the current Beat.
-    fn get_current_indisp_data(&self) -> (usize, f32, usize, bool, BeatOrigin) {
+    fn get_current_indisp_data(&self) -> (usize, f32, usize, bool, MetreSlot) {
         // TODO ideally we never want to lock in the audio thread, can this be replaced with rtrb?
         let metric_data = &self.params.combined_metre_data.lock().unwrap();
         let metric_data_a = metric_data.metre_a();
@@ -138,7 +138,7 @@ impl MetreFiddler {
         let current_beat_idx_b;
         let current_beat_idx;
         let current_beat_duration_sum;
-        let current_beat_origin: BeatOrigin;
+        let current_beat_origin: MetreSlot;
 
         // TODO no_many_velocities + don't_interpolate is a bit confusing for the user
 

@@ -1,19 +1,14 @@
 use vizia_plug::vizia::prelude::*;
 use crate::editor::MetreFiddlerEvent;
+use crate::metre::metre_slot::MetreSlot;
 
 pub struct MetreInput {}
-
-#[derive(Clone, Copy, Debug)]
-pub enum MetreAorB {
-    MetreA,
-    MetreB,
-}
 
 impl MetreInput {
     pub fn new(
         cx: &mut Context,
         text_data: Signal<String>,
-        which: MetreAorB,
+        slot: MetreSlot,
     ) -> Handle<'_, Self>
     {
         Self {}
@@ -25,8 +20,9 @@ impl MetreInput {
                     .on_submit(move |cx, text, _| {
                         cx.emit(MetreFiddlerEvent::ExpandTextBox(false));
                         cx.emit(MetreFiddlerEvent::ShowValidity(true));
-                        cx.emit(MetreFiddlerEvent::UpdateString(text, which));
+                        cx.emit(MetreFiddlerEvent::UpdateString(text, slot));
                     })
+                    .background_color(Color::white())
                     .height(Stretch(1.0))
                     .width(Stretch(3.0));
             })
