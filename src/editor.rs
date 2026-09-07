@@ -2,10 +2,11 @@ use nice_plug::prelude::{Editor};
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::widgets::*;
 use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
-use vizia_plug::vizia::icons::ICON_SETTINGS;
+use vizia_plug::vizia::icons::{ICON_SETTINGS, ICON_CHECK, ICON_X};
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use nice_plug::nice_log;
+use vizia_plug::vizia::input::Key::AltGraph;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::*;
 use crate::gui::param_label::ParamLabel;
@@ -60,7 +61,7 @@ pub(crate) struct AppData {
     pub(crate) screen: Signal<MetreFiddlerScreen>,
     pub(crate) displayed_position: SyncSignal<f32>,
     pub(crate) interpolation_data_snapshot: SyncSignal<InterpolationData>,
-    pub(crate) last_input_is_valid: Signal<String>,
+    pub(crate) last_input_is_valid: Signal<bool>,
     pub(crate) display_which_metre: Signal<MetreSlot>,
     pub(crate) display_validity: Signal<bool>,
     pub(crate) textbox_expanded: Signal<bool>,
@@ -91,7 +92,7 @@ pub(crate) enum MetreFiddlerEvent {
     RevertPhaseReset,
     ToggleCheckForPhaseReset,
     ToggleAB,
-    ShowValidity(bool),
+    DisplayValidity(bool),
     ExpandTextBox(bool),
 }
 
@@ -100,18 +101,21 @@ impl Model for AppData {
         event.map(|my_event, _meta| match my_event {
             UpdateString(new_text, slot) => {
                 match MetreData::try_from(new_text.as_str()) {
+                    // TODO its seems like currently edited non-parameter persistentfields like
+                    // metre_data don't mark plugin state as dirty and thus are not automatically
+                    // saved until a parameter is changed...
                     Ok(new_metre_data) => {
                         let mut metric_data = self.params.combined_metre_data.lock().unwrap();
 
                         match slot {
                             MetreA => {
-                                if self.text_input_a != *new_text {
+                                if self.text_input_a.get() != *new_text {
                                     self.text_input_a.update(|a| *a = new_text.clone());
                                 }
                                 metric_data.set_metre_a(new_metre_data);
                             },
                             _ => {
-                                if self.text_input_b != *new_text {
+                                if self.text_input_b.get() != *new_text {
                                     self.text_input_b.update(|a| *a = new_text.clone());
                                 }
                                 metric_data.set_metre_b(new_metre_data);
@@ -120,7 +124,7 @@ impl Model for AppData {
 
                         self.max_threshold.update(|a| *a = metric_data.metre_a().max.max(metric_data.metre_b().max));
                         self.interpolation_data_snapshot.update(|a| *a = metric_data.interpolation_data().clone());
-                        self.last_input_is_valid.update(|a| *a = "✔️".to_string());
+                        self.last_input_is_valid.update(|a| *a = true);
                         if self.interpolate_durations.get() {
                             self.params.current_nr_of_beats.store(metric_data.get_interpolated_durations(self.params.interpolate_a_b.value()).count(), Release);
                         } else {
@@ -129,7 +133,7 @@ impl Model for AppData {
                     },
                     Err(err_string) => {
                         nice_log!("Failed to parse string: '{}': {}", new_text, err_string);
-                        self.last_input_is_valid.update(|a| *a = "❌".to_string());
+                        self.last_input_is_valid.update(|a| *a = false);
                     },
                 }
             }
@@ -186,7 +190,7 @@ impl Model for AppData {
                 //     self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle;
                 // }
             }
-            ShowValidity(show) => {
+            DisplayValidity(show) => {
                 self.display_validity.update(|s| *s = *show);
             }
             ExpandTextBox(expand) => {
@@ -219,7 +223,7 @@ pub(crate) fn create(
         let midi_out_one_note = SyncSignal::from(params.midi_out_one_note.load(Relaxed));
         let interpolate_indisp = SyncSignal::from(params.interpolate_indisp.load(Relaxed));
         let retain_metric_phase= SyncSignal::from(params.retain_metric_phase.load(Relaxed));
-        let last_input_is_valid = Signal::new("✔️".to_string());
+        let last_input_is_valid = Signal::new(true);
         let display_which_metre = Signal::from(MetreA);
         let display_validity = Signal::from(true);
         let text_input_a = Signal::from(metric_data.metre_a().string.clone());
@@ -523,7 +527,7 @@ fn lower_part(cx: &mut Context,
               params: Arc<MetreFiddlerParams>,
               display_which_metre: Signal<MetreSlot>,
               display_validity: Signal<bool>,
-              is_valid: Signal<String>,
+              is_valid: Signal<bool>,
               textbox_expanded: Signal<bool>) {
     // The entire lower part
     VStack::new(cx, move |cx| {
@@ -573,14 +577,18 @@ fn lower_part(cx: &mut Context,
             // is valid
             VStack::new(cx, move |cx| {
                 Binding::new(cx, display_validity, move |cx| {
-                    if display_validity.get() {
-                        Label::new(cx, is_valid)
-                            .position_type(PositionType::Absolute)
-                            .top(Pixels(5.0))
-                            .left(Pixels(10.0));
-                    }
+                    Binding::new(cx, is_valid, move |cx| {
+                        if display_validity.get() {
+                            if is_valid.get() {
+                                Svg::new(cx, ICON_CHECK).fill(Color::black()).alignment(Alignment::BottomLeft);
+                            } else {
+                                Svg::new(cx, ICON_X).fill(RGBA::rgba(172, 53, 53, 255));
+                            }
+                        }
+                    });
                 })
-            });
+            })
+                .alignment(Alignment::Left);
         })
             .height(Pixels(32.0));
 
