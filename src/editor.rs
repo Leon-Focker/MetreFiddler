@@ -416,16 +416,14 @@ fn upper_part(cx: &mut Context,
                     .width(Pixels(10.0));
                 // min vel
                 VStack::new(cx, |cx| {
-                    ParamSliderV::new(cx, &velocity_params.velocity_min)
-                        .set_style(Scaled {factor: 1});
+                    ParamSliderV::new(cx, &velocity_params.velocity_min);
                     Label::new(cx, "min");
                 })
                     .padding_top(Pixels(20.0))
                     .alignment(Alignment::Center);
                 // max vel
                 VStack::new(cx, |cx| {
-                    ParamSliderV::new(cx, &velocity_params.velocity_max)
-                        .set_style(Scaled {factor: 1});
+                    ParamSliderV::new(cx, &velocity_params.velocity_max);
                     Label::new(cx, "max");
                 })
                     .padding_top(Pixels(20.0))

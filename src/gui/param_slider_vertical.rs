@@ -127,7 +127,7 @@ impl ParamSliderV {
                                 },
                                 _ => {
                                     let current = unmodulated_signal.get();
-                                    unsafe { param_ptr.normalized_value_to_string(2.0 * current, true) }
+                                    unsafe { param_ptr.normalized_value_to_string(current, true) }
                                 },
                             }
                         });
