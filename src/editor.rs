@@ -6,6 +6,7 @@ use vizia_plug::vizia::icons::{ICON_SETTINGS, ICON_CHECK, ICON_X};
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use nice_plug::nice_log;
+use vizia_plug::vizia::vg::surfaces::wrap_pixels;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::*;
 use crate::gui::param_label::ParamLabel;
@@ -711,8 +712,18 @@ fn duration_position(cx: &mut Context,
                             .alignment(Alignment::BottomCenter)
                             .font_weight(FontWeightKeyword::Bold);
 
-                        ParamSlider::new(cx, &duration_params.metric_dur_selector)
-                            .width(Pixels(200.0));
+                        // Make the gui look consistent without changing the slider itself:
+                        ZStack::new(cx, |cx| {
+                            ParamSlider::new(cx, &duration_params.metric_dur_selector)
+                                .width(Pixels(200.0));
+
+                            Element::new(cx)
+                                .border_width(Pixels(1.0))
+                                .border_color(Color::black())
+                                .height(Pixels(30.0))
+                                .width(Pixels(200.0));
+                        })
+                            .alignment(Alignment::Center);
 
                         HStack::new(cx, |cx| {
                             // BPM Toggle
