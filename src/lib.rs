@@ -54,8 +54,8 @@ impl MetreFiddler {
     }
 
     fn is_indisp_val_within_thresholds(&self, indisp_val: usize, max_indisp_val: usize) -> bool {
-        indisp_val >= (self.params_snapshot.lower_threshold.min(self.params_snapshot.upper_threshold) * max_indisp_val as f32) as usize
-            && indisp_val <= (self.params_snapshot.upper_threshold * max_indisp_val as f32) as usize
+        indisp_val >= (self.params_snapshot.lower_threshold.min(self.params_snapshot.upper_threshold) * max_indisp_val as f32).round() as usize
+            && indisp_val <= (self.params_snapshot.upper_threshold * max_indisp_val as f32).round() as usize
     }
 
     // Get the normalized time within a measure (between 0.0 and 1.0) depending on the current
