@@ -6,7 +6,6 @@ use vizia_plug::vizia::icons::{ICON_SETTINGS, ICON_CHECK, ICON_X};
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use nice_plug::nice_log;
-use vizia_plug::vizia::input::Key::AltGraph;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::*;
 use crate::gui::param_label::ParamLabel;
@@ -53,13 +52,13 @@ pub(crate) struct AppData {
     pub(crate) params: Arc<MetreFiddlerParams>,
     // settings
     pub interpolate_durations: SyncSignal<bool>,
-    pub many_velocities: SyncSignal<bool>,
-    pub midi_out_one_note: SyncSignal<bool>,
+    pub accent_mode: SyncSignal<bool>,
+    pub midi_out_different_pitches: SyncSignal<bool>,
     pub interpolate_indisp: SyncSignal<bool>,
     pub retain_metric_phase: SyncSignal<bool>,
     // others
     pub(crate) screen: Signal<MetreFiddlerScreen>,
-    pub(crate) displayed_position: SyncSignal<f32>,
+    pub(crate) displayed_position: SyncSignal<f32>, // TODO
     pub(crate) interpolation_data_snapshot: SyncSignal<InterpolationData>,
     pub(crate) last_input_is_valid: Signal<bool>,
     pub(crate) display_which_metre: Signal<MetreSlot>,
@@ -69,6 +68,7 @@ pub(crate) struct AppData {
     pub(crate) text_input_b: Signal<String>,
     pub(crate) max_threshold: Signal<usize>,
     pub(crate) current_nr_beats: Signal<usize>,
+    // TODO
     // pub(crate) check_for_phase_reset_toggle: Signal<bool>,   // this is toggled for every frame until the phase_reset button has been reset
 }
 
@@ -146,12 +146,12 @@ impl Model for AppData {
                 self.interpolate_indisp.update(|s| *s = !*s);
             }
             ToggleManyVelocities => {
-                self.params.many_velocities.store(!self.params.many_velocities.load(Relaxed), Relaxed);
-                self.many_velocities.update(|s| *s = !*s);
+                self.params.accent_mode.store(!self.params.accent_mode.load(Relaxed), Relaxed);
+                self.accent_mode.update(|s| *s = !*s);
             }
             ToggleMidiOutput => {
-                self.params.midi_out_one_note.store(!self.params.midi_out_one_note.load(Relaxed), Relaxed);
-                self.midi_out_one_note.update(|s| *s = !*s);
+                self.params.midi_out_different_pitches.store(!self.params.midi_out_different_pitches.load(Relaxed), Relaxed);
+                self.midi_out_different_pitches.update(|s| *s = !*s);
             }
             ToggleRetainPhase => {
                 self.params.retain_metric_phase.store(!self.params.retain_metric_phase.load(Relaxed), Relaxed);
@@ -219,8 +219,8 @@ pub(crate) fn create(
         let interpolation_data_snapshot = SyncSignal::from(metric_data.interpolation_data().clone());
         let displayed_position = SyncSignal::from(params.displayed_position.load(Relaxed));
         let interpolate_durations = SyncSignal::from(params.interpolate_durations.load(Relaxed));
-        let many_velocities = SyncSignal::from(params.many_velocities.load(Relaxed));
-        let midi_out_one_note = SyncSignal::from(params.midi_out_one_note.load(Relaxed));
+        let accent_mode = SyncSignal::from(params.accent_mode.load(Relaxed));
+        let midi_out_different_pitches = SyncSignal::from(params.midi_out_different_pitches.load(Relaxed));
         let interpolate_indisp = SyncSignal::from(params.interpolate_indisp.load(Relaxed));
         let retain_metric_phase= SyncSignal::from(params.retain_metric_phase.load(Relaxed));
         let last_input_is_valid = Signal::new(true);
@@ -239,8 +239,8 @@ pub(crate) fn create(
             params: params.clone(),
             screen,
             interpolate_durations,
-            many_velocities,
-            midi_out_one_note,
+            accent_mode,
+            midi_out_different_pitches,
             interpolate_indisp,
             retain_metric_phase,
             // interpolation_data_snapshot: Signal::from(metric_data.interpolation_data().clone()),
@@ -279,7 +279,7 @@ pub(crate) fn create(
                    VStack::new(cx,  move |cx| {
                        upper_part(cx,
                                   binding_params1.clone(),
-                                  many_velocities,
+                                  accent_mode,
                                   max_threshold,
                                   current_nr_beats,
                                   displayed_position,
@@ -355,10 +355,10 @@ fn settings_window(cx: &mut Context) {
             SettingsButton::new(cx, cx.data::<AppData>().interpolate_indisp, "Interpolate Indispensability Values".to_string())
                 .on_button_press(|cx| cx.emit(ToggleInterpolateIndisp));
             settings_divider(cx);
-            SettingsButton::new(cx, cx.data::<AppData>().many_velocities, "Accent-Mode: Only two distinct Velocities".to_string())
+            SettingsButton::new(cx, cx.data::<AppData>().accent_mode, "Accent-Mode: Only two distinct Velocities".to_string())
                 .on_button_press(|cx| cx.emit(ToggleManyVelocities));
             settings_divider(cx);
-            SettingsButton::new(cx, cx.data::<AppData>().midi_out_one_note, "Send different Pitches According to Indispensability".to_string())
+            SettingsButton::new(cx, cx.data::<AppData>().midi_out_different_pitches, "Send different Pitches According to Indispensability".to_string())
                 .on_button_press(|cx| cx.emit(ToggleMidiOutput));
             settings_divider(cx);
             SettingsButton::new(cx, cx.data::<AppData>().retain_metric_phase, "Retain Metric Phase when changing \nMetric Duration during Playback".to_string())
@@ -397,7 +397,7 @@ fn settings_divider(cx: &mut Context) {
 // Upper Part of the Plugin
 fn upper_part(cx: &mut Context,
               params: Arc<MetreFiddlerParams>,
-              many_velocities: SyncSignal<bool>,
+              accent_mode: SyncSignal<bool>,
               max_threshold: Signal<usize>,
               current_nr_beats: Signal<usize>,
               displayed_position: SyncSignal<f32>,
@@ -434,10 +434,8 @@ fn upper_part(cx: &mut Context,
                     ParamSliderKnob::new(cx, &velocity_params.velocity_skew)
                         .set_vertical(true);
                     let skew_label_params = Arc::clone(&velocity_params);
-                    Binding::new(cx, many_velocities, move |cx | {
-                        if many_velocities.get() {
-                            Label::new(cx, "skew");
-                        } else {
+                    Binding::new(cx, accent_mode, move |cx | {
+                        if accent_mode.get() {
                             // This callback is also `Fn`, so clone here rather
                             // than moving its captured `Arc` into the child.
                             let params_for_beat_label = Arc::clone(&skew_label_params);
@@ -450,6 +448,8 @@ fn upper_part(cx: &mut Context,
                                 })
                                     .alignment(Alignment::Center);
                             });
+                        } else {
+                            Label::new(cx, "skew");
                         }
                     });
                 })
@@ -478,13 +478,13 @@ fn upper_part(cx: &mut Context,
                 .height(Pixels(50.0));
 
             duration_position(
-                cx, 
+                cx,
                 Arc::clone(&duration_params),
-                displayed_position, 
+                displayed_position,
                 interpolate_durations,
                 interpolation_data_snapshot
             );
-            
+
             Element::new(cx)
                 .height(Pixels(10.0));
         })

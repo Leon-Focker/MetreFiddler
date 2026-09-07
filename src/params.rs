@@ -75,11 +75,11 @@ pub struct MetreFiddlerParams {
     #[persist = "interpolate_durations"]
     pub interpolate_durations: AtomicBool,
 
-    #[persist = "many_velocities"]
-    pub many_velocities: AtomicBool,
+    #[persist = "accent_mode"]
+    pub accent_mode: AtomicBool,
 
-    #[persist = "midi_out_one_note"]
-    pub midi_out_one_note: AtomicBool,
+    #[persist = "midi_out_different_pitches"]
+    pub midi_out_different_pitches: AtomicBool,
 
     #[persist = "interpolate_indisp"]
     pub interpolate_indisp: AtomicBool,
@@ -176,8 +176,8 @@ impl Default for MetreFiddlerParams {
             reset_info: AtomicBool::new(false),
 
             interpolate_durations: AtomicBool::new(true),
-            many_velocities: AtomicBool::new(true),
-            midi_out_one_note: AtomicBool::new(false),
+            accent_mode: AtomicBool::new(false),
+            midi_out_different_pitches: AtomicBool::new(true),
             interpolate_indisp: AtomicBool::new(true),
             retain_metric_phase: AtomicBool::new(true),
         }
@@ -198,8 +198,8 @@ impl MetreFiddlerParams {
             interpolate: self.interpolate_a_b.value(),
             use_bpm: self.use_bpm.value(),
             interpolate_durations: self.interpolate_durations.load(Relaxed),
-            many_velocities: self.many_velocities.load(Relaxed),
-            midi_out_one_note: self.midi_out_one_note.load(Relaxed),
+            accent_mode: self.accent_mode.load(Relaxed),
+            midi_out_different_pitches: self.midi_out_different_pitches.load(Relaxed),
             interpolate_indisp: self.interpolate_indisp.load(Relaxed),
             retain_metric_phase: self.retain_metric_phase.load(Relaxed),
         }
@@ -216,8 +216,8 @@ pub struct ParamsSnapShot {
     pub interpolate: f32,
     pub use_bpm: bool,
     pub interpolate_durations: bool,
-    pub many_velocities: bool,
-    pub midi_out_one_note: bool,
+    pub accent_mode: bool,
+    pub midi_out_different_pitches: bool,
     pub interpolate_indisp: bool,
     pub retain_metric_phase: bool,
 }
@@ -234,8 +234,8 @@ impl Default for ParamsSnapShot {
             interpolate: 0.0,
             use_bpm: false,
             interpolate_durations: true,
-            many_velocities: true,
-            midi_out_one_note: false,
+            accent_mode: true,
+            midi_out_different_pitches: false,
             interpolate_indisp: true,
             retain_metric_phase: true,
         }

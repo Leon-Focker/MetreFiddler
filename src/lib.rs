@@ -83,10 +83,10 @@ impl MetreFiddler {
         let v_min: f32 = self.params_snapshot.vel_min.min(self.params_snapshot.vel_max) / 127.0;
         let v_max: f32 = self.params_snapshot.vel_min.max(self.params_snapshot.vel_max) / 127.0;
         let skew = self.params_snapshot.vel_skew;
-        let many_velocities = self.params_snapshot.many_velocities;
+        let accent_mode = self.params_snapshot.accent_mode;
         // Velocity in range 0.0 - 1.0,
         let normalized_vel =
-            if many_velocities {
+            if !accent_mode {
                 (1.0 / (indisp_value + 1) as f32).powf(2.0*(1.0 - skew))
             } else if self.indisp_is_accent(indisp_value) {
                 v_min
@@ -364,9 +364,9 @@ impl Plugin for MetreFiddler {
                             }
                         };
                         let note = 60
-                            + if self.params_snapshot.midi_out_one_note {
+                            + if !self.params_snapshot.midi_out_different_pitches {
                             0
-                        } else if self.params_snapshot.many_velocities {
+                        } else if !self.params_snapshot.accent_mode {
                             indisp_val as u8
                         } else if self.indisp_is_accent(indisp_val) {
                             0

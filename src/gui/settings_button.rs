@@ -9,7 +9,7 @@ pub enum SettingsButtonEvent {
 }
 
 impl SettingsButton {
-    pub fn new(cx: &mut Context, is_on: SyncSignal<bool>, label: String) -> Handle<Self> {
+    pub fn new(cx: &'_ mut Context, is_on: SyncSignal<bool>, label: String) -> Handle<'_, Self> {
         Self {
             on_press: None,
         }.build(cx, |cx|{
@@ -51,6 +51,6 @@ pub trait SettingsButtonModifiers {
 
 impl<'a> SettingsButtonModifiers for Handle<'a, SettingsButton> {
     fn on_button_press<F: Fn(&mut EventContext) + 'static>(self, callback: F) -> Self {
-        self.modify(|counter| counter.on_press = Some(Box::new(callback)))
+        self.modify(|button| button.on_press = Some(Box::new(callback)))
     }
 }
