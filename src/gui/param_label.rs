@@ -17,7 +17,7 @@ impl ParamLabel {
         Self {}
             .build(
                 cx,
-                ParamWidgetBase::build_view(param, move |cx, _param_data| {
+                ParamWidgetBase::build_view(param, move |cx, _ | {
                     let modulated_signal = param_base.modulated_signal(cx);
 
                     Binding::new(cx, modulated_signal, move|cx| {

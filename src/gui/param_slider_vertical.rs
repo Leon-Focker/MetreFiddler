@@ -110,7 +110,7 @@ impl ParamSliderV {
         }
             .build(
                 cx,
-                ParamWidgetBase::build_view(param, move |cx, param_data| {
+                ParamWidgetBase::build_view(param, move |cx, _ | {
                     Binding::new(cx, style, move |cx| {
                         let style = style.get();
                         let param_ptr = param_base.param_ptr();

@@ -69,7 +69,7 @@ impl ParamSliderKnob {
         }
             .build(
                 cx,
-                ParamWidgetBase::build_view(param, move |cx, param_data| {
+                ParamWidgetBase::build_view(param, move |cx, _| {
                     Binding::new(cx, vertical, move |cx| {
                         let vertical = vertical.get();
 

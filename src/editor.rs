@@ -282,7 +282,9 @@ pub(crate) fn create(
                                   many_velocities,
                                   max_threshold,
                                   current_nr_beats,
-                                  displayed_position);
+                                  displayed_position,
+                                  interpolate_durations,
+                                  interpolation_data_snapshot);
                    })
                        .height(Stretch(3.0));
                    // Lower Part of the Plugin
@@ -398,7 +400,9 @@ fn upper_part(cx: &mut Context,
               many_velocities: SyncSignal<bool>,
               max_threshold: Signal<usize>,
               current_nr_beats: Signal<usize>,
-              displayed_position: SyncSignal<f32>) {
+              displayed_position: SyncSignal<f32>,
+              interpolate_durations: SyncSignal<bool>,
+              interpolation_data_snapshot: SyncSignal<InterpolationData>) {
     let velocity_params = Arc::clone(&params);
     let threshold_params = Arc::clone(&params);
     let duration_params = Arc::clone(&params);
@@ -473,8 +477,14 @@ fn upper_part(cx: &mut Context,
                 .font_size(40.0)
                 .height(Pixels(50.0));
 
-            duration_position(cx, Arc::clone(&duration_params), displayed_position);
-
+            duration_position(
+                cx, 
+                Arc::clone(&duration_params),
+                displayed_position, 
+                interpolate_durations,
+                interpolation_data_snapshot
+            );
+            
             Element::new(cx)
                 .height(Pixels(10.0));
         })
@@ -667,7 +677,11 @@ fn lower_part(cx: &mut Context,
 }
 
 
-fn duration_position(cx: &mut Context, params: Arc<MetreFiddlerParams>, displayed_position: SyncSignal<f32>) {
+fn duration_position(cx: &mut Context,
+                     params: Arc<MetreFiddlerParams>,
+                     displayed_position: SyncSignal<f32>,
+                     interpolate_durations: SyncSignal<bool>,
+                     interpolation_data_snapshot: SyncSignal<InterpolationData>) {
     let duration_content_params = Arc::clone(&params);
     let position_params = Arc::clone(&params);
 
@@ -753,25 +767,24 @@ fn duration_position(cx: &mut Context, params: Arc<MetreFiddlerParams>, displaye
 
             let position_view_params = Arc::clone(&position_params);
             ZStack::new(cx, move |cx| {
-                // TODO
                 // The ticks on the position bar
-                // VStack::new(cx, |cx| {
-                //     Binding::new(cx, interpolate_durations,|cx| {
-                //         ParamBinding::new(
-                //             cx,
-                //             &params.interpolate_a_b,
-                //             move |cx, interpolate| {
-                //                 ParamTicks::new(
-                //                     cx,
-                //                     200.0,
-                //                     interpolation_data_snapshot,
-                //                     interpolate,
-                //                     interpolate_durations)
-                //                     .height(Pixels(20.0));
-                //             }).alignment(Alignment::Center);
-                //     });
-                // })
-                //     .alignment(Alignment::Center);
+                VStack::new(cx, |cx| {
+                    //Binding::new(cx, interpolate_durations,|cx| {
+                        //ParamBinding::new(
+                           // cx,
+                          //  &params.interpolate_a_b,
+                            //move |cx, interpolate| {
+                                ParamTicks::new(
+                                    cx,
+                                    200.0,
+                                    interpolation_data_snapshot,
+                                    &params.interpolate_a_b,
+                                    interpolate_durations)
+                                    .height(Pixels(20.0));
+                            //}).alignment(Alignment::Center);
+                   // });
+                })
+                    .alignment(Alignment::Center);
 
                 VStack::new(cx, |cx| {
                     // TODO explore, whether parambinding can be replaced with a binding to param.unmodulated_signal or similar

@@ -1,4 +1,7 @@
 use vizia_plug::vizia::prelude::*;
+use nice_plug::prelude::*;
+use vizia_plug::widgets::param_base::ParamWidgetBase;
+use crate::metre::interpolation::interpolation_data;
 use crate::metre::metre_slot::MetreSlot;
 use crate::metre::metre_slot::MetreSlot::Both;
 use crate::metre::interpolation::interpolation_data::InterpolationData;
@@ -7,20 +10,37 @@ use crate::util::{get_durations};
 pub struct ParamTicks {}
 
 impl ParamTicks {
-    pub fn new<L>(
-        cx: &mut Context,
+    pub fn new<'c, 'p, P>(
+        cx: &'c mut Context,
         width_pixels: f32,
-        interpolation_data: impl Res<InterpolationData>,
-        interpolate: f32,
-        interpolate_durs: bool,
-    ) -> Handle<'_, Self>
+        interpolation_data: SyncSignal<InterpolationData>,
+        interpolation_param: &'p P,
+        interpolate_durs: SyncSignal<bool>,
+    ) -> Handle<'c, Self>
+    where
+        'p: 'c,
+        P: Param + 'static,
     {
+        let param_base = ParamWidgetBase::new(cx, interpolation_param);
+
         Self {}
             .build(
                 cx,
-                |cx| {
-                    Self::ticks(cx, interpolation_data, interpolate, interpolate_durs, width_pixels);
-                }
+                ParamWidgetBase::build_view(interpolation_param, move |cx, _ | {
+                    let interpolation = param_base.modulated_signal(cx);
+
+                    Binding::new(cx, interpolation_data, move |cx| {
+                        Binding::new(cx, interpolation, move |cx| {
+                            Binding::new(cx, interpolate_durs, move |cx| {
+                                let interpolation_data = interpolation_data.get();
+                                let interpolation = interpolation.get();
+                                let interpolate_durs = interpolate_durs.get();
+
+                                Self::ticks(cx, width_pixels, interpolation_data, interpolation, interpolate_durs);
+                            });
+                        });
+                    });
+                }),
             )
             .width(Pixels(width_pixels))
             .hoverable(false)
@@ -28,10 +48,10 @@ impl ParamTicks {
 
     fn ticks(
         cx: &mut Context,
-        interpolation_data: impl Res<InterpolationData>,
-        interpolate: f32,
-        interpolate_durs: bool,
         width_px: f32,
+        interpolation_data: InterpolationData,
+        interpolation: f32,
+        interpolate_durs: bool,
     ) {
         HStack::new(cx, |cx| {
             Element::new(cx)
@@ -39,20 +59,16 @@ impl ParamTicks {
                 .width(Pixels(1.0))
                 .height(Pixels(10.0));
 
-            // TODO clean this up a bit. Actually we could just draw one tick gui for two metres
-            // on top of each other...?
-
             let durations: Vec<f32>;
             let opacity_ids: Vec<MetreSlot>;
 
             if interpolate_durs {
-                durations = interpolation_data.get_value(cx).get_interpolated_durations(interpolate).collect();
+                durations = interpolation_data.get_interpolated_durations(interpolation).collect();
                 opacity_ids = vec![Both; durations.len()];
             } else {
-                let interpolation_data = interpolation_data.get_value(cx);
                 let starts = interpolation_data.unique_start_times();
                 let inits = interpolation_data.unique_start_time_origins();
-                
+
                 durations = get_durations(starts).collect();
                 opacity_ids = inits[1..].to_vec();
             };
@@ -73,7 +89,7 @@ impl ParamTicks {
                     255
                 } else {
                     // calculate opacity (init_opacity -1.0 -> MetreA, 0.0 -> MetreB, 1.0 -> both)
-                    origin.calculate_opacity(interpolate)
+                    origin.calculate_opacity(interpolation)
                 };
                 let color: Color = Color::rgba(0,0,0, opacity);
 
@@ -98,6 +114,6 @@ impl ParamTicks {
 
 impl View for ParamTicks {
     fn element(&self) -> Option<&'static str> {
-        Some("param-ticks")
+        Some("param_ticks")
     }
 }

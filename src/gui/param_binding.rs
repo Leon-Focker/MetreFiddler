@@ -16,7 +16,7 @@ impl ParamBinding {
         Self {}
             .build(
                 cx,
-                ParamWidgetBase::build_view(param, move |cx, param_data| {
+                ParamWidgetBase::build_view(param, move |cx, _| {
                     let param_value = param_base.modulated_signal(cx);
                     
                     Binding::new(cx, param_value, move |cx| {
