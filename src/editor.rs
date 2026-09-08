@@ -5,6 +5,7 @@ use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
 use vizia_plug::vizia::icons::{ICON_SETTINGS, ICON_CHECK, ICON_X};
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+use atomic_float::AtomicF32;
 use nice_plug::nice_log;
 use vizia_plug::vizia::vg::surfaces::wrap_pixels;
 use crate::{MetreFiddlerParams};
@@ -57,9 +58,8 @@ pub(crate) struct AppData {
     pub midi_out_different_pitches: SyncSignal<bool>,
     pub interpolate_indisp: SyncSignal<bool>,
     pub retain_metric_phase: SyncSignal<bool>,
-    // others
+    // other signals
     pub(crate) screen: Signal<MetreFiddlerScreen>,
-    pub(crate) displayed_position: SyncSignal<f32>, // TODO
     pub(crate) interpolation_data_snapshot: SyncSignal<InterpolationData>,
     pub(crate) last_input_is_valid: Signal<bool>,
     pub(crate) display_which_metre: Signal<MetreSlot>,
@@ -218,7 +218,6 @@ pub(crate) fn create(
         // App Parameters
         let screen = Signal::from(MetreFiddlerScreen::Main);
         let interpolation_data_snapshot = SyncSignal::from(metric_data.interpolation_data().clone());
-        let displayed_position = SyncSignal::from(params.displayed_position.load(Relaxed));
         let interpolate_durations = SyncSignal::from(params.interpolate_durations.load(Relaxed));
         let accent_mode = SyncSignal::from(params.accent_mode.load(Relaxed));
         let midi_out_different_pitches = SyncSignal::from(params.midi_out_different_pitches.load(Relaxed));
@@ -232,7 +231,6 @@ pub(crate) fn create(
         let textbox_expanded = Signal::from(false);
         let max_threshold = Signal::from(metric_data.metre_a().max.max(metric_data.metre_b().max));
         let current_nr_beats = Signal::from(0); // TODO
-        let displayed_position = SyncSignal::from(params.displayed_position.load(Relaxed));
 
         // check_for_phase_reset_toggle: false,
 
@@ -244,8 +242,6 @@ pub(crate) fn create(
             midi_out_different_pitches,
             interpolate_indisp,
             retain_metric_phase,
-            // interpolation_data_snapshot: Signal::from(metric_data.interpolation_data().clone()),
-            displayed_position,
             // check_for_phase_reset_toggle: false,
             interpolation_data_snapshot,
             last_input_is_valid,
@@ -283,7 +279,6 @@ pub(crate) fn create(
                                   accent_mode,
                                   max_threshold,
                                   current_nr_beats,
-                                  displayed_position,
                                   interpolate_durations,
                                   interpolation_data_snapshot);
                    })
@@ -401,7 +396,6 @@ fn upper_part(cx: &mut Context,
               accent_mode: SyncSignal<bool>,
               max_threshold: Signal<usize>,
               current_nr_beats: Signal<usize>,
-              displayed_position: SyncSignal<f32>,
               interpolate_durations: SyncSignal<bool>,
               interpolation_data_snapshot: SyncSignal<InterpolationData>) {
     let velocity_params = Arc::clone(&params);
@@ -479,7 +473,6 @@ fn upper_part(cx: &mut Context,
             duration_position(
                 cx,
                 Arc::clone(&duration_params),
-                displayed_position,
                 interpolate_durations,
                 interpolation_data_snapshot
             );
@@ -678,7 +671,6 @@ fn lower_part(cx: &mut Context,
 
 fn duration_position(cx: &mut Context,
                      params: Arc<MetreFiddlerParams>,
-                     displayed_position: SyncSignal<f32>,
                      interpolate_durations: SyncSignal<bool>,
                      interpolation_data_snapshot: SyncSignal<InterpolationData>) {
     let duration_content_params = Arc::clone(&params);
@@ -805,9 +797,14 @@ fn duration_position(cx: &mut Context,
                             let display_pos = use_pos < 0.5;
 
                             if display_pos {
-                                DisplayKnob::new(
+                                let display_position_getter = {
+                                    let params = params.clone();
+                                    move || params.displayed_position.load(Relaxed)
+                                };
+
+                                DisplayKnob::new_with_getter(
                                     cx,
-                                    displayed_position)
+                                    display_position_getter)
                                     .height(Pixels(20.0))
                                     .width(Pixels(200.0));
                             } else {
