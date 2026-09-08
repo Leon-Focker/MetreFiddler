@@ -102,6 +102,8 @@ impl MetreFiddler {
         }
     }
 
+    /// Contains a more complicated way of getting nr_beats compared to .count() as to not copy the
+    /// iterator...
     fn get_beat_idx_from_durations(&self, mut durations: impl Iterator<Item=f32>) -> (usize, f32, usize) {
         let position = self.get_normalized_position_in_bar();
         let mut current_beat_idx: usize = 0;

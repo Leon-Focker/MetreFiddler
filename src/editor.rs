@@ -4,7 +4,7 @@ use vizia_plug::widgets::*;
 use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
 use vizia_plug::vizia::icons::{ICON_SETTINGS, ICON_CHECK, ICON_X};
 use std::sync::{Arc};
-use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+use std::sync::atomic::Ordering::{Relaxed, Release};
 use nice_plug::nice_log;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::*;
@@ -21,8 +21,6 @@ use crate::metre::interpolation::interpolation_data::InterpolationData;
 use crate::metre::metre_data::MetreData;
 use crate::metre::metre_slot::MetreSlot;
 use crate::metre::metre_slot::MetreSlot::*;
-// TODO Click+Alt does not seem to work properly with vizia-plug? it just sometimes detects alt and
-//  sometimes it doesn't. (only on linux)
 
 pub const NOTO_SANS: &str = "Noto Sans";
 
@@ -65,8 +63,9 @@ pub(crate) struct AppData {
     pub(crate) textbox_expanded: Signal<bool>,
     pub(crate) text_input_a: Signal<String>,
     pub(crate) text_input_b: Signal<String>,
+    pub(crate) metre_a_nr_beats: Signal<usize>,
+    pub(crate) metre_b_nr_beats: Signal<usize>,
     pub(crate) max_threshold: Signal<usize>,
-    pub(crate) current_nr_beats: Signal<usize>,
     // TODO
     // pub(crate) check_for_phase_reset_toggle: Signal<bool>,   // this is toggled for every frame until the phase_reset button has been reset
 }
@@ -109,21 +108,23 @@ impl Model for AppData {
                         match slot {
                             MetreA => {
                                 if self.text_input_a.get() != *new_text {
-                                    self.text_input_a.update(|a| *a = new_text.clone());
+                                    self.text_input_a.set(new_text.clone());
                                 }
+                                self.metre_a_nr_beats.set(new_metre_data.durations.iter().count());
                                 metric_data.set_metre_a(new_metre_data);
                             },
                             _ => {
                                 if self.text_input_b.get() != *new_text {
-                                    self.text_input_b.update(|a| *a = new_text.clone());
+                                    self.text_input_b.set(new_text.clone());
                                 }
+                                self.metre_b_nr_beats.set(new_metre_data.durations.iter().count());
                                 metric_data.set_metre_b(new_metre_data);
                             },
                         }
 
-                        self.max_threshold.update(|a| *a = metric_data.metre_a().max.max(metric_data.metre_b().max));
-                        self.interpolation_data_snapshot.update(|a| *a = metric_data.interpolation_data().clone());
-                        self.last_input_is_valid.update(|a| *a = true);
+                        self.max_threshold.set(metric_data.metre_a().max.max(metric_data.metre_b().max));
+                        self.interpolation_data_snapshot.set(metric_data.interpolation_data().clone());
+                        self.last_input_is_valid.set(true);
                         if self.interpolate_durations.get() {
                             self.params.current_nr_of_beats.store(metric_data.get_interpolated_durations(self.params.interpolate_a_b.value()).count(), Release);
                         } else {
@@ -132,7 +133,7 @@ impl Model for AppData {
                     },
                     Err(err_string) => {
                         nice_log!("Failed to parse string: '{}': {}", new_text, err_string);
-                        self.last_input_is_valid.update(|a| *a = false);
+                        self.last_input_is_valid.set(false);
                     },
                 }
             }
@@ -190,10 +191,10 @@ impl Model for AppData {
                 // }
             }
             DisplayValidity(show) => {
-                self.display_validity.update(|s| *s = *show);
+                self.display_validity.set(*show);
             }
             ExpandTextBox(expand) => {
-                self.textbox_expanded.update(|e| *e = *expand);
+                self.textbox_expanded.set(*expand);
             },
         });
     }
@@ -228,7 +229,8 @@ pub(crate) fn create(
         let text_input_b = Signal::from(metric_data.metre_b().string.clone());
         let textbox_expanded = Signal::from(false);
         let max_threshold = Signal::from(metric_data.metre_a().max.max(metric_data.metre_b().max));
-        let current_nr_beats = Signal::from(0); // TODO
+        let metre_a_nr_beats = Signal::from(metric_data.metre_a().durations.iter().count());
+        let metre_b_nr_beats = Signal::from(metric_data.metre_b().durations.iter().count());
 
         // check_for_phase_reset_toggle: false,
 
@@ -249,7 +251,8 @@ pub(crate) fn create(
             text_input_a,
             text_input_b,
             max_threshold,
-            current_nr_beats,
+            metre_a_nr_beats,
+            metre_b_nr_beats,
         }
             .build(cx);
 
@@ -276,9 +279,10 @@ pub(crate) fn create(
                                   binding_params1.clone(),
                                   accent_mode,
                                   max_threshold,
-                                  current_nr_beats,
                                   interpolate_durations,
-                                  interpolation_data_snapshot);
+                                  interpolation_data_snapshot,
+                                  metre_a_nr_beats,
+                                  metre_b_nr_beats);
                    })
                        .height(Stretch(3.0));
                    // Lower Part of the Plugin
@@ -393,9 +397,10 @@ fn upper_part(cx: &mut Context,
               params: Arc<MetreFiddlerParams>,
               accent_mode: SyncSignal<bool>,
               max_threshold: Signal<usize>,
-              current_nr_beats: Signal<usize>,
               interpolate_durations: SyncSignal<bool>,
-              interpolation_data_snapshot: SyncSignal<InterpolationData>) {
+              interpolation_data_snapshot: SyncSignal<InterpolationData>,
+              metre_a_nr_beats: Signal<usize>,
+              metre_b_nr_beats: Signal<usize>) {
     let velocity_params = Arc::clone(&params);
     let threshold_params = Arc::clone(&params);
     let duration_params = Arc::clone(&params);
@@ -424,24 +429,48 @@ fn upper_part(cx: &mut Context,
                 VStack::new(cx, |cx| {
                     ParamSliderKnob::new(cx, &velocity_params.velocity_skew)
                         .set_vertical(true);
-                    let skew_label_params = Arc::clone(&velocity_params);
-                    Binding::new(cx, accent_mode, move |cx | {
-                        if accent_mode.get() {
-                            // This callback is also `Fn`, so clone here rather
-                            // than moving its captured `Arc` into the child.
-                            let params_for_beat_label = Arc::clone(&skew_label_params);
-                            Binding::new(cx, current_nr_beats, move |cx| {
-                                // TODO does this need a parambinding on interpolate_a_b?
-                                let nr_beats = params_for_beat_label.current_nr_of_beats.load(Acquire) as f32;
 
-                                ParamLabel::new(cx, &params_for_beat_label.velocity_skew, move |skew: f32| {
-                                    ((skew * nr_beats).round() as usize).to_string()
-                                })
-                                    .alignment(Alignment::Center);
-                            });
-                        } else {
-                            Label::new(cx, "skew");
-                        }
+                    let skew_label_params = Arc::clone(&velocity_params);
+
+                    // Complex dependency for calculation of nr_of_beats
+                    Binding::new(cx, accent_mode, move |cx| {
+                        let params_for_interpolation = Arc::clone(&params);
+                        let params_for_label = Arc::clone(&skew_label_params);
+
+                        ParamBinding::new(
+                            cx,
+                            &params_for_interpolation.interpolate_a_b,
+                            move |cx, interpolation| {
+                                if !accent_mode.get() {
+                                    Label::new(cx, "skew");
+                                    return;
+                                }
+
+                                let current_nr_of_beats = Memo::new(move |_| {
+                                    let data = interpolation_data_snapshot.get();
+
+                                    if interpolate_durations.get() {
+                                        data.get_interpolated_durations(interpolation).count()
+                                    } else if interpolation <= 0.0 {
+                                        metre_a_nr_beats.get()
+                                    } else if interpolation >= 1.0 {
+                                        metre_b_nr_beats.get()
+                                    } else {
+                                        data.interleaved_durations().len()
+                                    }
+                                });
+
+                                let label_params = Arc::clone(&params_for_label);
+                                Binding::new(cx, current_nr_of_beats, move |cx| {
+                                    let nr_beats = current_nr_of_beats.get() as f32;
+
+                                    ParamLabel::new(cx, &label_params.velocity_skew, move |skew| {
+                                        (skew * nr_beats).round().to_string()
+                                    })
+                                        .alignment(Alignment::Center);
+                                });
+                            },
+                        ).alignment(Alignment::Center);
                     });
                 })
                     .padding_top(Pixels(20.0))
@@ -609,13 +638,12 @@ fn lower_part(cx: &mut Context,
                 // Switching A & B
                 HStack::new(cx, move |cx| {
                     // Switch between A and B
-                    Binding::new(cx, display_which_metre, move |cx| { // todo binding needed?
-                        Button::new(cx,
-                                    |cx|
-                                        match display_which_metre.get() {
-                                            MetreA => Label::new(cx, "Switch to B"),
-                                            _ => Label::new(cx, "Switch to A"),
-                                        }
+                    Binding::new(cx, display_which_metre, move |cx| {
+                        Button::new(cx,|cx|
+                            match display_which_metre.get() {
+                                MetreA => Label::new(cx, "Switch to B"),
+                                _ => Label::new(cx, "Switch to A"),
+                            }
                         )
                             .on_press(|cx| {
                                 cx.emit(ToggleAB)
@@ -777,7 +805,7 @@ fn duration_position(cx: &mut Context,
                     .height(Pixels(20.0));
 
                 VStack::new(cx, |cx| {
-                    // TODO explore, whether parambinding can be replaced with a binding to param.unmodulated_signal or similar
+
                     let position_slider_params = Arc::clone(&position_view_params);
                     ParamBinding::new(
                         cx,
@@ -806,7 +834,7 @@ fn duration_position(cx: &mut Context,
                 })
                     .alignment(Alignment::Center);
             })
-                .alignment(Alignment::Center);;
+                .alignment(Alignment::Center);
         })
             .alignment(Alignment::TopCenter)
             .height(Stretch(0.2));
