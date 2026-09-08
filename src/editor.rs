@@ -5,9 +5,7 @@ use vizia_plug::{create_vizia_editor, ViziaState, ViziaTheming};
 use vizia_plug::vizia::icons::{ICON_SETTINGS, ICON_CHECK, ICON_X};
 use std::sync::{Arc};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
-use atomic_float::AtomicF32;
 use nice_plug::nice_log;
-use vizia_plug::vizia::vg::surfaces::wrap_pixels;
 use crate::{MetreFiddlerParams};
 use crate::editor::MetreFiddlerEvent::*;
 use crate::gui::param_label::ParamLabel;
@@ -708,6 +706,7 @@ fn duration_position(cx: &mut Context,
                                 .width(Pixels(200.0));
 
                             Element::new(cx)
+                                .hoverable(false)
                                 .border_width(Pixels(1.0))
                                 .border_color(Color::black())
                                 .height(Pixels(30.0))
@@ -769,23 +768,13 @@ fn duration_position(cx: &mut Context,
             let position_view_params = Arc::clone(&position_params);
             ZStack::new(cx, move |cx| {
                 // The ticks on the position bar
-                VStack::new(cx, |cx| {
-                    //Binding::new(cx, interpolate_durations,|cx| {
-                        //ParamBinding::new(
-                           // cx,
-                          //  &params.interpolate_a_b,
-                            //move |cx, interpolate| {
-                                ParamTicks::new(
-                                    cx,
-                                    200.0,
-                                    interpolation_data_snapshot,
-                                    &params.interpolate_a_b,
-                                    interpolate_durations)
-                                    .height(Pixels(20.0));
-                            //}).alignment(Alignment::Center);
-                   // });
-                })
-                    .alignment(Alignment::Center);
+                ParamTicks::new(
+                    cx,
+                    200.0,
+                    interpolation_data_snapshot,
+                    &params.interpolate_a_b,
+                    interpolate_durations)
+                    .height(Pixels(20.0));
 
                 VStack::new(cx, |cx| {
                     // TODO explore, whether parambinding can be replaced with a binding to param.unmodulated_signal or similar
@@ -816,7 +805,8 @@ fn duration_position(cx: &mut Context,
                         .alignment(Alignment::Center);
                 })
                     .alignment(Alignment::Center);
-            });
+            })
+                .alignment(Alignment::Center);;
         })
             .alignment(Alignment::TopCenter)
             .height(Stretch(0.2));
