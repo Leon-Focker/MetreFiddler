@@ -3,11 +3,14 @@ use crate::metre::metre_slot::MetreSlot;
 use crate::metre::interpolation::index_pairs::IndexPairs;
 use crate::util::{approx_eq, dry_wet, get_durations, get_start_times};
 
+#[derive(Debug)]
 struct InterpolationDataHelper<'a> {
     durations: &'a[f32],
     starts: &'a[f32],
     gnsm: &'a[usize],
     len: usize,
+    // Within a recursive call, InterpolationDataHelper might only be a slice of the original data,
+    // this is the relative offset of that slice to the entire set.
     offset: usize,
 }
 
@@ -29,10 +32,7 @@ pub struct InterpolationData {
 
 impl InterpolationData {
 
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self::default()
-    }
+    //pub fn new() -> Self { Self::default() }
 
     pub fn new_from_durs_and_gnsm(durations_a: &[f32], durations_b: &[f32], gnsm_a: &[usize], gnsm_b: &[usize]) -> Self {
         assert_eq!(durations_a.len(), gnsm_a.len());
@@ -60,9 +60,7 @@ impl InterpolationData {
         &self.unique_start_times
     }
 
-    pub fn unique_start_time_origins(&self) -> &[MetreSlot] {
-        &self.unique_start_time_origins
-    }
+    pub fn unique_start_time_origins(&self) -> &[MetreSlot] { &self.unique_start_time_origins }
 
     fn set_duration_pairs(mut self, durations_a: &[f32], durations_b: &[f32], gnsm_a: &[usize], gnsm_b: &[usize]) -> Self {
         let data_a = InterpolationDataHelper {
@@ -163,7 +161,6 @@ impl InterpolationData {
         self
     }
 }
-
 
 
 /// Given durations A and B, look for identical start times. For each identical start time in both
