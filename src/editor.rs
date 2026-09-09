@@ -588,7 +588,7 @@ fn lower_part(cx: &mut Context,
                                     _ =>  MetreInput::new(cx, text_input_b, MetreB),
                                 };
                             })
-                                .lock_focus_to_within() // automatically move into popup textbox
+                                .lock_focus_to_within()
                                 .placement(Placement::Over)
                                 .background_color(Color::yellowgreen())
                                 .height(Pixels(75.0)); // TODO adjust size or add scrollable view in future?
@@ -748,14 +748,26 @@ fn duration_position(cx: &mut Context,
                                 .class("red_button")
                                 .with_label("  Use BPM")
                                 .width(Pixels(100.0));
+
                             // Reset Phase
-                            Button::new(
-                                cx,
-                                |cx| Label::new(cx, "reset phase"))
-                                .on_press(|cx| {
-                                    cx.emit(TriggerPhaseReset);
-                                })
-                                .width(Pixels(100.0));
+                            ZStack::new(cx, |cx| {
+                                Button::new(
+                                    cx,
+                                    |cx| Label::new(cx, "reset phase"))
+                                    .on_press(|cx| {
+                                        cx.emit(TriggerPhaseReset);
+                                    })
+                                    .width(Pixels(100.0));
+
+                                Element::new(cx)
+                                    .hoverable(false)
+                                    .border_width(Pixels(1.0))
+                                    .border_color(Color::black())
+                                    .height(Pixels(30.0))
+                                    .width(Pixels(100.0));
+                            })
+                                .width(Pixels(100.0))
+                                .alignment(Alignment::Center);
                         })
                             .alignment(Alignment::Center)
                             .top(Pixels(10.0));
