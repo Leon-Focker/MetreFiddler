@@ -28,17 +28,12 @@ impl IndexPairs {
                 } else { None },
             )).collect();
     }
-    pub(crate) fn set_first_free(&mut self, value: (Option<usize>, Option<usize>)) {
-        if let Some(elem) = self
-            .iter_mut()
-            .find(|(x, y)| x.is_none() && y.is_none())
-        {
-            *elem = value
-        }
-    }
+
     pub(crate) fn all_free(&self) -> bool {
         self.iter().all(|&(x, y)| x.is_none() && y.is_none())
     }
+
+    // This does not implement a total order, but it does a good job at not making my code panic...
     pub(crate) fn sort(&mut self) {
         self.data.sort_by(|&(a, b), &(x, y)|
             if let (Some(a), Some(x)) = (a, x) {

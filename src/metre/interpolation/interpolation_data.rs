@@ -168,7 +168,7 @@ impl InterpolationData {
 fn pair_identical_start_times(result: &mut IndexPairs, data_a: &InterpolationDataHelper, data_b: &InterpolationDataHelper) {
     for (i, &x) in data_a.starts.iter().enumerate() {
         if let Some(pos) = data_b.starts.iter().position(|&y| approx_eq(x, y, 0.001)) {
-            result.set_first_free((Some(i + data_a.offset), Some(pos + data_b.offset)))
+            result.push((Some(i + data_a.offset), Some(pos + data_b.offset)))
         }
     }
 }
@@ -209,7 +209,7 @@ fn get_duration_pairs(data_a: InterpolationDataHelper, data_b: InterpolationData
     let max_len = data_a.len.max(data_b.len);
     let no_strata_left_a = data_a.gnsm.iter().all(|&x| x == *data_a.gnsm.first().unwrap_or(&0));
     let no_strata_left_b = data_b.gnsm.iter().all(|&x| x == *data_b.gnsm.first().unwrap_or(&0));
-    let mut result = IndexPairs::new_with_len(max_len);
+    let mut result = IndexPairs::default(); //new_with_len(max_len); //data_a.len + data_b.len);
 
     // Apply one of the methods below (either complete result or match some indices),
     // then call recursively with empty subsections
@@ -233,14 +233,14 @@ fn get_duration_pairs(data_a: InterpolationDataHelper, data_b: InterpolationData
             // If there is metrical hierarchy left in only one of the sections, find a match from the
             // highest stratum via start-time
             if !no_strata_left_a && no_strata_left_b {
-                result.set_first_free(pair_higher_stratum_by_time(&data_a, &data_b));
+                result.push(pair_higher_stratum_by_time(&data_a, &data_b));
             } else if no_strata_left_a && !no_strata_left_b {
                 let (tmp_b, tmp_a) = pair_higher_stratum_by_time(&data_b, &data_a);
-                result.set_first_free((tmp_a, tmp_b));
+                result.push((tmp_a, tmp_b));
             }
             // If there is metrical hierarchy left in both sections, match beats from the same stratum
             else {
-                result.set_first_free(pair_highest_stratus(&data_a, &data_b));
+                result.push(pair_highest_stratus(&data_a, &data_b));
             }
         }
     }
@@ -293,11 +293,8 @@ fn get_duration_pairs(data_a: InterpolationDataHelper, data_b: InterpolationData
     }
 
     // Add the subsections to result
-    subseqs.reverse();
-    for elem in result.iter_mut() {
-        if let (None, None) = *elem {
-            *elem = subseqs.pop().unwrap_or((None, None));
-        }
+    for &elem in subseqs.iter() {
+        result.push(elem);
     }
 
     result.sort();
