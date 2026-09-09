@@ -284,16 +284,14 @@ impl Plugin for MetreFiddler {
         // reset metric phase when playback stops and more
         self.hande_playback_start_stop(context.transport().playing);
 
-        // TODO this is still dodgy and only happens once per buffer
+        // TODO should this happen more ofter than once per buffer?
         // Handle the reset_phase button:
-        // automated value
         if self.params.reset_phase.value() {
+            dbg!("value true!");
             if ! self.last_reset_phase_value {
                 // resetting the progress_in_samples counter:
                 self.metric_phase.reset()
             }
-            // message to gui
-            self.params.reset_info.store(false, Release)
         }
         self.last_reset_phase_value = self.params.reset_phase.value();
 

@@ -63,9 +63,6 @@ pub struct MetreFiddlerParams {
     
     // Simple Parameters
     
-    // This informs the Gui, that the phase_reset button needs resetting.
-    pub reset_info: AtomicBool,
-    
     // This holds the value that is displayed when use_position is false
     pub displayed_position: AtomicF32,
     
@@ -173,7 +170,6 @@ impl Default for MetreFiddlerParams {
 
             current_nr_of_beats: AtomicUsize::new(0),
             displayed_position: AtomicF32::new(0.0),
-            reset_info: AtomicBool::new(false),
 
             interpolate_durations: AtomicBool::new(true),
             accent_mode: AtomicBool::new(false),

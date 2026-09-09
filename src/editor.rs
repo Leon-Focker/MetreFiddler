@@ -66,8 +66,6 @@ pub(crate) struct AppData {
     pub(crate) metre_a_nr_beats: Signal<usize>,
     pub(crate) metre_b_nr_beats: Signal<usize>,
     pub(crate) max_threshold: Signal<usize>,
-    // TODO
-    // pub(crate) check_for_phase_reset_toggle: Signal<bool>,   // this is toggled for every frame until the phase_reset button has been reset
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -87,8 +85,7 @@ pub(crate) enum MetreFiddlerEvent {
     ToggleMidiOutput,
     ToggleRetainPhase,
     TriggerPhaseReset,
-    RevertPhaseReset,
-    ToggleCheckForPhaseReset,
+    TriggerPhaseResetParamReset,
     ToggleAB,
     DisplayValidity(bool),
     ExpandTextBox(bool),
@@ -164,31 +161,19 @@ impl Model for AppData {
                 self.display_which_metre.update(|m| *m = !*m)
             }
             TriggerPhaseReset => {
-                // TODO
-                // self.params.reset_info.store(true, Release);
-                // self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle;
-                //
-                // let param_ref = &self.params.reset_phase;
-                //
-                // cx.emit(ParamEvent::BeginSetParameter(param_ref).upcast());
-                // cx.emit(ParamEvent::SetParameter(param_ref, true).upcast());
-                // cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
+                let param_ref = &self.params.reset_phase;
+
+                cx.emit(ParamEvent::BeginSetParameter(param_ref).upcast());
+                cx.emit(ParamEvent::SetParameter(param_ref, true).upcast());
+                cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
             }
-            RevertPhaseReset => {
-                // TODO
+            TriggerPhaseResetParamReset => {
+                dbg!("reset");
                 let param_ref = &self.params.reset_phase;
 
                 cx.emit(ParamEvent::BeginSetParameter(param_ref).upcast());
                 cx.emit(ParamEvent::SetParameter(param_ref, false).upcast());
                 cx.emit(ParamEvent::EndSetParameter(param_ref).upcast());
-            }
-            ToggleCheckForPhaseReset => {
-                // TODO
-                // if !self.params.reset_info.load(Acquire) {
-                //     cx.emit(RevertPhaseReset);
-                // } else {
-                //     self.check_for_phase_reset_toggle = !self.check_for_phase_reset_toggle;
-                // }
             }
             DisplayValidity(show) => {
                 self.display_validity.set(*show);
@@ -232,8 +217,6 @@ pub(crate) fn create(
         let metre_a_nr_beats = Signal::from(metric_data.metre_a().durations.iter().count());
         let metre_b_nr_beats = Signal::from(metric_data.metre_b().durations.iter().count());
 
-        // check_for_phase_reset_toggle: false,
-
         AppData {
             params: params.clone(),
             screen,
@@ -242,7 +225,6 @@ pub(crate) fn create(
             midi_out_different_pitches,
             interpolate_indisp,
             retain_metric_phase,
-            // check_for_phase_reset_toggle: false,
             interpolation_data_snapshot,
             last_input_is_valid,
             display_which_metre,
@@ -255,12 +237,6 @@ pub(crate) fn create(
             metre_b_nr_beats,
         }
             .build(cx);
-
-        // This is a kinda hacky way to get the button and BoolParm to reset itself, but keeping
-        // DAW Automation possible...
-        // Binding::new(cx, Data::check_for_phase_reset_toggle, |cx, _was_reset| {
-        //     cx.emit(ToggleCheckForPhaseReset);
-        // });
 
         let binding_params = params.clone();
 
@@ -756,6 +732,11 @@ fn duration_position(cx: &mut Context,
                                     |cx| Label::new(cx, "reset phase"))
                                     .on_press(|cx| {
                                         cx.emit(TriggerPhaseReset);
+                                        // TODO this doesn't work somehow?
+                                        cx.schedule_emit(
+                                            TriggerPhaseResetParamReset,
+                                            Instant::now() + Duration::from_millis(200)
+                                        );
                                     })
                                     .width(Pixels(100.0));
 
